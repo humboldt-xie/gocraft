@@ -90,6 +90,26 @@ func NewBlockRender() (*BlockRender, error) {
 
 	return r, nil
 }
+func makeBlock(vertices []float32, w Block, id Vec3) []float32 {
+	show := [...]bool{
+		IsTransparent(game.world.Block(id.Left())),
+		IsTransparent(game.world.Block(id.Right())),
+		IsTransparent(game.world.Block(id.Up())),
+		IsTransparent(game.world.Block(id.Down())), //&& id.Y != 0
+		IsTransparent(game.world.Block(id.Front())),
+		IsTransparent(game.world.Block(id.Back())),
+	}
+	show = [...]bool{
+		true,
+		true,
+		true,
+		true,
+		true,
+		true,
+	}
+	vertices = makeData(w, vertices, show, id, tex.Texture(int(w)))
+	return vertices
+}
 
 func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 	facedata := r.facePool.Get().([]float32)
@@ -97,21 +117,9 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 
 	c.RangeBlocks(func(id Vec3, w int) {
 		if w == 0 {
-			log.Panicf("unexpect 0 item type on %v", id)
+			return
 		}
-		show := [...]bool{
-			IsTransparent(game.world.Block(id.Left())),
-			IsTransparent(game.world.Block(id.Right())),
-			IsTransparent(game.world.Block(id.Up())),
-			IsTransparent(game.world.Block(id.Down())) && id.Y != 0,
-			IsTransparent(game.world.Block(id.Front())),
-			IsTransparent(game.world.Block(id.Back())),
-		}
-		if IsPlant(game.world.Block(id)) {
-			facedata = makePlantData(facedata, show, id, tex.Texture(w))
-		} else {
-			facedata = makeCubeData(facedata, show, id, tex.Texture(w))
-		}
+		facedata = makeBlock(facedata, Block(w), id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
 	log.Printf("chunk faces:%d", n/6)
@@ -132,13 +140,12 @@ func (r *BlockRender) UpdateItem(w int) {
 	vertices := r.facePool.Get().([]float32)
 	defer r.facePool.Put(vertices[:0])
 	texture := tex.Texture(w)
+
 	show := [...]bool{true, true, true, true, true, true}
 	pos := Vec3{0, 0, 0}
-	if IsPlant(w) {
-		vertices = makePlantData(vertices, show, pos, texture)
-	} else {
-		vertices = makeCubeData(vertices, show, pos, texture)
-	}
+
+	vertices = makeData(Block(w), vertices, show, pos, texture)
+
 	item := NewMesh(r.shader, vertices)
 	if r.item != nil {
 		r.item.Release()
@@ -161,17 +168,18 @@ func frustumPlanes(mat *mgl32.Mat4) []mgl32.Vec4 {
 func isChunkVisiable(planes []mgl32.Vec4, id Vec3) bool {
 	p := mgl32.Vec3{float32(id.X * ChunkWidth), 0, float32(id.Z * ChunkWidth)}
 	const m = ChunkWidth
+	const max = 1024000
 
 	points := []mgl32.Vec3{
-		mgl32.Vec3{p.X(), p.Y(), p.Z()},
-		mgl32.Vec3{p.X() + m, p.Y(), p.Z()},
-		mgl32.Vec3{p.X() + m, p.Y(), p.Z() + m},
-		mgl32.Vec3{p.X(), p.Y(), p.Z() + m},
+		mgl32.Vec3{p.X(), p.Y() - max, p.Z()},
+		mgl32.Vec3{p.X() + m, p.Y() - max, p.Z()},
+		mgl32.Vec3{p.X() + m, p.Y() - max, p.Z() + m},
+		mgl32.Vec3{p.X(), p.Y() - max, p.Z() + m},
 
-		mgl32.Vec3{p.X(), p.Y() + 256, p.Z()},
-		mgl32.Vec3{p.X() + m, p.Y() + 256, p.Z()},
-		mgl32.Vec3{p.X() + m, p.Y() + 256, p.Z() + m},
-		mgl32.Vec3{p.X(), p.Y() + 256, p.Z() + m},
+		mgl32.Vec3{p.X(), p.Y() + max, p.Z()},
+		mgl32.Vec3{p.X() + m, p.Y() + max, p.Z()},
+		mgl32.Vec3{p.X() + m, p.Y() + max, p.Z() + m},
+		mgl32.Vec3{p.X(), p.Y() + max, p.Z() + m},
 	}
 	for _, plane := range planes {
 		var in, out int
@@ -250,7 +258,6 @@ func (r *BlockRender) updateMeshCache() {
 		id := k.(Vec3)
 		if !needed[id] {
 			removed = append(removed, id)
-			return true
 		}
 		return true
 	})

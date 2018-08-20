@@ -87,12 +87,18 @@ func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 	return nil, nil
 }
 
-func (w *World) Block(id Vec3) int {
+func (w *World) Block(id Vec3) Block {
 	chunk := w.BlockChunk(id)
 	if chunk == nil {
 		return -1
 	}
-	return chunk.Block(id)
+	block := chunk.Block(id)
+	if block == -1 {
+		//block = 1
+		//w.UpdateBlock(id, 1)
+	}
+	return block
+
 }
 
 func (w *World) BlockChunk(block Vec3) *Chunk {
@@ -103,50 +109,33 @@ func (w *World) BlockChunk(block Vec3) *Chunk {
 	}
 	return chunk
 }
+func (w *World) CreateBlock(id Vec3, tp int) {
+	otp := w.Block(id)
+	if otp != -1 {
+		return
+	}
+	log.Printf("create %v", id)
+	w.UpdateBlock(id, tp)
+}
 
 func (w *World) UpdateBlock(id Vec3, tp int) {
 	chunk := w.BlockChunk(id)
 	if chunk != nil {
-		if tp != 0 {
-			chunk.add(id, tp)
-		} else {
-			chunk.del(id)
+		chunk.add(id, tp)
+		if tp == 0 {
+			//chunk.del(id)
+			if id.Y <= 10 {
+				for x := id.X - 1; x <= id.X+1; x++ {
+					for y := id.Y - 1; y <= id.Y+1; y++ {
+						for z := id.Z - 1; z <= id.Z+1; z++ {
+							w.CreateBlock(Vec3{x, y, z}, sandBlock)
+						}
+					}
+				}
+			}
 		}
 	}
 	store.UpdateBlock(id, tp)
-}
-
-func IsPlant(tp int) bool {
-	if tp >= 17 && tp <= 31 {
-		return true
-	}
-	return false
-}
-
-func IsTransparent(tp int) bool {
-	if IsPlant(tp) {
-		return true
-	}
-	switch tp {
-	case -1, 0, 10, 15:
-		return true
-	default:
-		return false
-	}
-}
-
-func IsObstacle(tp int) bool {
-	if IsPlant(tp) {
-		return false
-	}
-	switch tp {
-	case -1:
-		return true
-	case 0:
-		return false
-	default:
-		return true
-	}
 }
 
 func (w *World) HasBlock(id Vec3) bool {
@@ -165,10 +154,11 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		chunk.add(block, tp)
 	}
 	err := store.RangeBlocks(id, func(bid Vec3, w int) {
-		if w == 0 {
-			chunk.del(bid)
+		/*if w == 0 {
+			//chunk.del(bid)
+			chunk.add(bid, w)
 			return
-		}
+		}*/
 		chunk.add(bid, w)
 	})
 	if err != nil {
@@ -176,10 +166,10 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		return nil
 	}
 	ClientFetchChunk(id, func(bid Vec3, w int) {
-		if w == 0 {
-			chunk.del(bid)
+		/*if w == 0 {
+			//chunk.del(bid)
 			return
-		}
+		}*/
 		chunk.add(bid, w)
 		store.UpdateBlock(bid, w)
 	})
@@ -206,13 +196,6 @@ func (w *World) Chunks(ids []Vec3) []*Chunk {
 }
 
 func makeChunkMap(cid Vec3) map[Vec3]int {
-	const (
-		grassBlock = 1
-		sandBlock  = 2
-		grass      = 17
-		leaves     = 15
-		wood       = 5
-	)
 	m := make(map[Vec3]int)
 	p, q := cid.X, cid.Z
 	for dx := 0; dx < ChunkWidth; dx++ {
@@ -244,7 +227,7 @@ func makeChunkMap(cid Vec3) map[Vec3]int {
 			}
 
 			// tree
-			if w == 1 {
+			if w == grassBlock {
 				ok := true
 				if dx-4 < 0 || dz-4 < 0 ||
 					dx+4 > ChunkWidth || dz+4 > ChunkWidth {

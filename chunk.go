@@ -56,6 +56,7 @@ type Chunk struct {
 }
 
 func NewChunk(id Vec3) *Chunk {
+	log.Printf("new chunk %v", id)
 	c := &Chunk{
 		id: id,
 	}
@@ -66,15 +67,19 @@ func (c *Chunk) Id() Vec3 {
 	return c.id
 }
 
-func (c *Chunk) Block(id Vec3) int {
+func (c *Chunk) Block(id Vec3) Block {
 	if id.Chunkid() != c.id {
 		log.Panicf("id %v chunk %v", id, c.id)
 	}
 	w, ok := c.blocks.Load(id)
 	if ok {
-		return w.(int)
+		return Block(w.(int))
 	}
-	return 0
+	if id.Y > 0 {
+		return 0
+	}
+	//c.add(id, 1)
+	return -1
 }
 
 func (c *Chunk) add(id Vec3, w int) {
