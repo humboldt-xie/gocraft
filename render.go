@@ -90,24 +90,24 @@ func NewBlockRender() (*BlockRender, error) {
 
 	return r, nil
 }
-func makeBlock(vertices []float32, w Block, id Vec3) []float32 {
+func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 	show := [...]bool{
-		IsTransparent(game.world.Block(id.Left())),
-		IsTransparent(game.world.Block(id.Right())),
-		IsTransparent(game.world.Block(id.Up())),
-		IsTransparent(game.world.Block(id.Down())), //&& id.Y != 0
-		IsTransparent(game.world.Block(id.Front())),
-		IsTransparent(game.world.Block(id.Back())),
+		game.world.Block(id.Left()).IsTransparent(),
+		game.world.Block(id.Right()).IsTransparent(),
+		game.world.Block(id.Up()).IsTransparent(),
+		game.world.Block(id.Down()).IsTransparent(), //&& id.Y != 0
+		game.world.Block(id.Front()).IsTransparent(),
+		game.world.Block(id.Back()).IsTransparent(),
 	}
-	show = [...]bool{
+	/*show = [...]bool{
 		true,
 		true,
 		true,
 		true,
 		true,
 		true,
-	}
-	vertices = makeData(w, vertices, show, id, tex.Texture(int(w)))
+	}*/
+	vertices = makeData(w, vertices, show, id)
 	return vertices
 }
 
@@ -115,11 +115,11 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 	facedata := r.facePool.Get().([]float32)
 	defer r.facePool.Put(facedata[:0])
 
-	c.RangeBlocks(func(id Vec3, w int) {
-		if w == 0 {
+	c.RangeBlocks(func(id Vec3, w *Block) {
+		if w.Type == 0 {
 			return
 		}
-		facedata = makeBlock(facedata, Block(w), id)
+		facedata = makeBlock(facedata, w, id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
 	log.Printf("chunk faces:%d", n/6)
@@ -136,15 +136,14 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 }
 
 // call on mainthread
-func (r *BlockRender) UpdateItem(w int) {
+func (r *BlockRender) UpdateItem(w *Block) {
 	vertices := r.facePool.Get().([]float32)
 	defer r.facePool.Put(vertices[:0])
-	texture := tex.Texture(w)
 
 	show := [...]bool{true, true, true, true, true, true}
 	pos := Vec3{0, 0, 0}
 
-	vertices = makeData(Block(w), vertices, show, pos, texture)
+	vertices = makeData(w, vertices, show, pos)
 
 	item := NewMesh(r.shader, vertices)
 	if r.item != nil {
@@ -615,12 +614,12 @@ func (r *LineRender) drawWireFrame(mat mgl32.Mat4) {
 
 	id := *block
 	show := [...]bool{
-		IsTransparent(game.world.Block(id.Left())),
-		IsTransparent(game.world.Block(id.Right())),
-		IsTransparent(game.world.Block(id.Up())),
-		IsTransparent(game.world.Block(id.Down())),
-		IsTransparent(game.world.Block(id.Front())),
-		IsTransparent(game.world.Block(id.Back())),
+		game.world.Block(id.Left()).IsTransparent(),
+		game.world.Block(id.Right()).IsTransparent(),
+		game.world.Block(id.Up()).IsTransparent(),
+		game.world.Block(id.Down()).IsTransparent(),
+		game.world.Block(id.Front()).IsTransparent(),
+		game.world.Block(id.Back()).IsTransparent(),
 	}
 	vertices = makeWireFrameData(vertices, show)
 	if len(vertices) == 0 {

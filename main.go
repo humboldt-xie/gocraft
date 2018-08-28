@@ -37,7 +37,7 @@ type Game struct {
 
 	world   *World
 	itemidx int
-	item    int
+	item    Block
 	fps     FPS
 
 	exclusiveMouse bool
@@ -93,7 +93,7 @@ func NewGame(w, h int) (*Game, error) {
 		return nil, err
 	}
 	mainthread.Call(func() {
-		game.blockRender.UpdateItem(game.item)
+		game.blockRender.UpdateItem(&game.item)
 	})
 	game.lineRender, err = NewLineRender()
 	if err != nil {
@@ -139,16 +139,16 @@ func (g *Game) onMouseButtonCallback(win *glfw.Window, button glfw.MouseButton, 
 	block, prev := g.world.HitTest(g.camera.Pos(), g.camera.Front())
 	if button == glfw.MouseButton2 && action == glfw.Press {
 		if prev != nil && *prev != head && *prev != foot {
-			g.world.UpdateBlock(*prev, g.item)
+			g.world.UpdateBlock(*prev, NewBlock(g.item.Type))
 			g.dirtyBlock(*prev)
-			go ClientUpdateBlock(*prev, g.item)
+			go ClientUpdateBlock(*prev, NewBlock(g.item.Type))
 		}
 	}
 	if button == glfw.MouseButton1 && action == glfw.Press {
 		if block != nil {
-			g.world.UpdateBlock(*block, 0)
+			g.world.UpdateBlock(*block, NewBlock(typeAir))
 			g.dirtyBlock(*block)
-			go ClientUpdateBlock(*block, 0)
+			go ClientUpdateBlock(*block, NewBlock(typeAir))
 		}
 	}
 }
@@ -185,21 +185,21 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 	case glfw.KeyE:
 		g.itemidx = (1 + g.itemidx) % len(availableItems)
 		g.item = availableItems[g.itemidx]
-		g.blockRender.UpdateItem(g.item)
+		g.blockRender.UpdateItem(&g.item)
 	case glfw.KeyR:
 		g.itemidx--
 		if g.itemidx < 0 {
 			g.itemidx = len(availableItems) - 1
 		}
 		g.item = availableItems[g.itemidx]
-		g.blockRender.UpdateItem(g.item)
+		g.blockRender.UpdateItem(&g.item)
 	}
 }
 
 func (g *Game) handleKeyInput(dt float64) {
 	speed := float32(0.1)
 	if g.camera.flying {
-		speed = 0.2
+		speed = 0.1
 	}
 	if g.win.GetKey(glfw.KeyEscape) == glfw.Press {
 		g.setExclusiveMouse(false)
@@ -228,7 +228,11 @@ func (g *Game) handleKeyInput(dt float64) {
 
 	pos, stop = g.world.Collide(pos)
 	if stop {
-		g.vy = 0
+		if g.vy > -5 {
+			g.vy = 0
+		} else if g.vy < -5 {
+			g.vy = -g.vy * 0.1
+		}
 	}
 	g.camera.SetPos(pos)
 }

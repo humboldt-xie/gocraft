@@ -238,11 +238,12 @@ func makePlantData(vertices []float32, show [6]bool, block Vec3, tex *BlockTextu
 	return vertices
 }
 
-func makeData(w Block, vertices []float32, show [6]bool, block Vec3, tex *BlockTexture) []float32 {
+func makeData(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
+	texture := tex.Texture(w)
 	if IsPlant(w) {
-		vertices = makePlantData(vertices, show, block, tex)
+		vertices = makePlantData(vertices, show, block, texture)
 	} else {
-		vertices = makeCubeData(vertices, show, block, tex)
+		vertices = makeCubeData(vertices, show, block, texture)
 	}
 	return vertices
 }

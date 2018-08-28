@@ -87,16 +87,12 @@ func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 	return nil, nil
 }
 
-func (w *World) Block(id Vec3) Block {
+func (w *World) Block(id Vec3) *Block {
 	chunk := w.BlockChunk(id)
 	if chunk == nil {
-		return -1
+		return nil
 	}
 	block := chunk.Block(id)
-	if block == -1 {
-		//block = 1
-		//w.UpdateBlock(id, 1)
-	}
 	return block
 
 }
@@ -109,38 +105,69 @@ func (w *World) BlockChunk(block Vec3) *Chunk {
 	}
 	return chunk
 }
-func (w *World) CreateBlock(id Vec3, tp int) {
+func (w *World) CreateBlock(id Vec3, tp *Block) {
 	otp := w.Block(id)
-	if otp != -1 {
+	if otp != nil {
 		return
 	}
 	log.Printf("create %v", id)
-	w.UpdateBlock(id, tp)
+	w.updateBlock(id, tp)
 }
-
-func (w *World) UpdateBlock(id Vec3, tp int) {
-	chunk := w.BlockChunk(id)
-	if chunk != nil {
-		chunk.add(id, tp)
-		if tp == 0 {
-			//chunk.del(id)
-			if id.Y <= 10 {
-				for x := id.X - 1; x <= id.X+1; x++ {
-					for y := id.Y - 1; y <= id.Y+1; y++ {
-						for z := id.Z - 1; z <= id.Z+1; z++ {
-							w.CreateBlock(Vec3{x, y, z}, sandBlock)
-						}
+func (w *World) Generate(id Vec3) {
+	nw := typeSandBlock
+	if noise2(-float32(id.X)*0.1, float32(id.Y)*0.1, 4, 0.8, 2) > 0.6 {
+		nw = typeGrassBlock
+		width := 10
+		//length := 10
+		height := 5
+		y := id.Y - height
+		minY := id.Y - height
+		maxY := id.Y
+		minX := id.X - width/2
+		maxX := id.X + width/2
+		minZ := id.Z - width/2
+		maxZ := id.Z + width/2
+		for ; y <= maxY; y++ {
+			for x := minX; x <= id.X+width/2; x++ {
+				for z := id.Z - width/2; z <= id.Z+width/2; z++ {
+					if y == minY || y == maxY || x == minX || x == maxX || z == minZ || z == maxZ {
+						nw = typeGrassBlock
+					} else {
+						nw = typeAir
 					}
+					w.CreateBlock(Vec3{x, y, z}, NewBlock(nw))
 				}
 			}
 		}
 	}
+	for x := id.X - 1; x <= id.X+1; x++ {
+		for y := id.Y - 1; y <= id.Y+1; y++ {
+			for z := id.Z - 1; z <= id.Z+1; z++ {
+				w.CreateBlock(Vec3{x, y, z}, NewBlock(nw))
+			}
+		}
+	}
+}
+func (w *World) updateBlock(id Vec3, tp *Block) {
+	chunk := w.BlockChunk(id)
+	if chunk != nil {
+		chunk.add(id, tp)
+	}
 	store.UpdateBlock(id, tp)
+
+}
+func (w *World) UpdateBlock(id Vec3, tp *Block) {
+	w.updateBlock(id, tp)
+	if tp.Type == typeAir {
+		if id.Y <= 12 {
+			w.Generate(id)
+		}
+	}
 }
 
 func (w *World) HasBlock(id Vec3) bool {
 	tp := w.Block(id)
-	return tp != -1 && tp != 0
+	return tp != nil && tp.Type != typeAir
 }
 
 func (w *World) Chunk(id Vec3) *Chunk {
@@ -153,7 +180,7 @@ func (w *World) Chunk(id Vec3) *Chunk {
 	for block, tp := range blocks {
 		chunk.add(block, tp)
 	}
-	err := store.RangeBlocks(id, func(bid Vec3, w int) {
+	err := store.RangeBlocks(id, func(bid Vec3, w *Block) {
 		/*if w == 0 {
 			//chunk.del(bid)
 			chunk.add(bid, w)
@@ -165,7 +192,7 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		log.Printf("fetch chunk(%v) from db error:%s", id, err)
 		return nil
 	}
-	ClientFetchChunk(id, func(bid Vec3, w int) {
+	ClientFetchChunk(id, func(bid Vec3, w *Block) {
 		/*if w == 0 {
 			//chunk.del(bid)
 			return
@@ -195,8 +222,8 @@ func (w *World) Chunks(ids []Vec3) []*Chunk {
 	return chunks
 }
 
-func makeChunkMap(cid Vec3) map[Vec3]int {
-	m := make(map[Vec3]int)
+func makeChunkMap(cid Vec3) map[Vec3]*Block {
+	m := make(map[Vec3]*Block)
 	p, q := cid.X, cid.Z
 	for dx := 0; dx < ChunkWidth; dx++ {
 		for dz := 0; dz < ChunkWidth; dz++ {
@@ -205,29 +232,29 @@ func makeChunkMap(cid Vec3) map[Vec3]int {
 			g := noise2(float32(-x)*0.01, float32(-z)*0.01, 2, 0.9, 2)
 			mh := int(g*32 + 16)
 			h := int(f * float32(mh))
-			w := grassBlock
+			tb := typeGrassBlock
 			if h <= 12 {
 				h = 12
-				w = sandBlock
+				tb = typeSandBlock
 			}
 			// grass and sand
-			for y := 0; y < h; y++ {
-				m[Vec3{x, y, z}] = w
+			for y := 11; y < h; y++ {
+				m[Vec3{x, y, z}] = NewBlock(tb)
 			}
 
 			// flowers
-			if w == grassBlock {
+			if tb == typeGrassBlock {
 				if noise2(-float32(x)*0.1, float32(z)*0.1, 4, 0.8, 2) > 0.6 {
-					m[Vec3{x, h, z}] = grass
+					m[Vec3{x, h, z}] = NewBlock(typeGrass)
 				}
 				if noise2(float32(x)*0.05, float32(-z)*0.05, 4, 0.8, 2) > 0.7 {
-					w := 18 + int(noise2(float32(x)*0.1, float32(z)*0.1, 4, 0.8, 2)*7)
-					m[Vec3{x, h, z}] = w
+					tb := 18 + int(noise2(float32(x)*0.1, float32(z)*0.1, 4, 0.8, 2)*7)
+					m[Vec3{x, h, z}] = NewBlock(tb)
 				}
 			}
 
 			// tree
-			if w == grassBlock {
+			if tb == typeGrassBlock {
 				ok := true
 				if dx-4 < 0 || dz-4 < 0 ||
 					dx+4 > ChunkWidth || dz+4 > ChunkWidth {
@@ -239,13 +266,13 @@ func makeChunkMap(cid Vec3) map[Vec3]int {
 							for oz := -3; oz <= 3; oz++ {
 								d := ox*ox + oz*oz + (y-h-4)*(y-h-4)
 								if d < 11 {
-									m[Vec3{x + ox, y, z + oz}] = leaves
+									m[Vec3{x + ox, y, z + oz}] = NewBlock(typeLeaves)
 								}
 							}
 						}
 					}
 					for y := h; y < h+7; y++ {
-						m[Vec3{x, y, z}] = wood
+						m[Vec3{x, y, z}] = NewBlock(typeWood)
 					}
 				}
 			}
@@ -253,7 +280,7 @@ func makeChunkMap(cid Vec3) map[Vec3]int {
 			// cloud
 			for y := 64; y < 72; y++ {
 				if noise3(float32(x)*0.01, float32(y)*0.1, float32(z)*0.01, 8, 0.5, 2) > 0.69 {
-					m[Vec3{x, y, z}] = 16
+					m[Vec3{x, y, z}] = NewBlock(typeCloud)
 				}
 			}
 		}
