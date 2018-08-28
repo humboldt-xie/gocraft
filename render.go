@@ -41,7 +41,7 @@ type BlockRender struct {
 
 	facePool *sync.Pool
 
-	sigch     chan struct{}
+	sigch     chan bool
 	meshcache sync.Map //map[Vec3]*Mesh
 
 	stat Stat
@@ -59,7 +59,7 @@ func NewBlockRender() (*BlockRender, error) {
 	}
 
 	r := &BlockRender{
-		sigch: make(chan struct{}, 4),
+		sigch: make(chan bool, 4),
 	}
 
 	mainthread.Call(func() {
@@ -345,7 +345,7 @@ func (r *BlockRender) forcePlayerChunks() {
 func (r *BlockRender) checkChunks() {
 	// nonblock signal
 	select {
-	case r.sigch <- struct{}{}:
+	case r.sigch <- true:
 	default:
 	}
 }

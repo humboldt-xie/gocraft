@@ -15,6 +15,7 @@ import (
 	"github.com/go-gl/gl/v3.3-core/gl"
 	"github.com/go-gl/glfw/v3.2/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/icexin/gocraft-server/proto"
 )
 
 var (
@@ -146,9 +147,15 @@ func (g *Game) onMouseButtonCallback(win *glfw.Window, button glfw.MouseButton, 
 	}
 	if button == glfw.MouseButton1 && action == glfw.Press {
 		if block != nil {
-			g.world.UpdateBlock(*block, NewBlock(typeAir))
-			g.dirtyBlock(*block)
-			go ClientUpdateBlock(*block, NewBlock(typeAir))
+			tblock := g.world.Block(*block)
+			if tblock != nil {
+				tblock.Life -= 40
+			}
+			if tblock == nil || tblock.Life <= 0 {
+				g.world.UpdateBlock(*block, NewBlock(typeAir))
+				g.dirtyBlock(*block)
+				go ClientUpdateBlock(*block, NewBlock(typeAir))
+			}
 		}
 	}
 }
@@ -250,9 +257,18 @@ func (g *Game) renderStat() {
 	g.fps.Update()
 	p := g.camera.Pos()
 	cid := NearBlock(p).Chunkid()
+	blockPos, _ := g.world.HitTest(g.camera.Pos(), g.camera.Front())
+
+	life := 0
+	if blockPos != nil {
+		block := g.world.Block(*blockPos)
+		if block != nil {
+			life = block.Life
+		}
+	}
 	stat := g.blockRender.Stat()
-	title := fmt.Sprintf("[%.2f %.2f %.2f] %v [%d/%d %d] %d", p.X(), p.Y(), p.Z(),
-		cid, stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps())
+	title := fmt.Sprintf("[%.2f %.2f %.2f] %v [%d/%d %d] %d %d/100", p.X(), p.Y(), p.Z(),
+		cid, stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps(), life)
 	g.win.SetTitle(title)
 }
 
@@ -264,6 +280,14 @@ func (g *Game) syncPlayerLoop() {
 }
 
 func (g *Game) Update() {
+	pos := g.camera.Pos()
+	g.playerRender.UpdateOrAdd(1, proto.PlayerState{
+		X:  pos.X() + 5.0,
+		Y:  pos.Y(),
+		Z:  pos.Z() + 5.0,
+		Rx: 5,
+		Ry: 0,
+	})
 	mainthread.Call(func() {
 		var dt float64
 		now := glfw.GetTime()
@@ -281,7 +305,6 @@ func (g *Game) Update() {
 		g.blockRender.Draw()
 		g.lineRender.Draw()
 		g.playerRender.Draw()
-
 		g.renderStat()
 
 		g.win.SwapBuffers()
