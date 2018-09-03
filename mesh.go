@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/faiface/glhf"
+	"github.com/faiface/mainthread"
 	"github.com/go-gl/gl/v3.3-core/gl"
 )
 
@@ -12,7 +13,7 @@ type Mesh struct {
 	Dirty    bool
 }
 
-func NewMesh(shader *glhf.Shader, data []float32) *Mesh {
+func newMesh(shader *glhf.Shader, data []float32) *Mesh {
 	m := new(Mesh)
 	m.faces = len(data) / (shader.VertexFormat().Size() / 4) / 6
 	if m.faces == 0 {
@@ -52,6 +53,17 @@ func NewMesh(shader *glhf.Shader, data []float32) *Mesh {
 	gl.BindVertexArray(0)
 	gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 	return m
+}
+
+func NewMesh(shader *glhf.Shader, data []float32, onmainthread bool) (mesh *Mesh) {
+	if onmainthread {
+		mesh = newMesh(shader, data)
+	} else {
+		mainthread.Call(func() {
+			mesh = newMesh(shader, data)
+		})
+	}
+	return mesh
 }
 
 func (m *Mesh) Faces() int {

@@ -77,7 +77,6 @@ func NewBlockRender() (*BlockRender, error) {
 			return
 		}
 		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img)
-
 	})
 	if err != nil {
 		return nil, err
@@ -99,14 +98,6 @@ func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 		game.world.Block(id.Front()).IsTransparent(),
 		game.world.Block(id.Back()).IsTransparent(),
 	}
-	/*show = [...]bool{
-		true,
-		true,
-		true,
-		true,
-		true,
-		true,
-	}*/
 	vertices = makeData(w, vertices, show, id)
 	return vertices
 }
@@ -124,13 +115,7 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
 	log.Printf("chunk faces:%d", n/6)
 	var mesh *Mesh
-	if onmainthread {
-		mesh = NewMesh(r.shader, facedata)
-	} else {
-		mainthread.Call(func() {
-			mesh = NewMesh(r.shader, facedata)
-		})
-	}
+	mesh = NewMesh(r.shader, facedata, onmainthread)
 	mesh.Id = c.Id()
 	return mesh
 }
@@ -145,7 +130,7 @@ func (r *BlockRender) UpdateItem(w *Block) {
 
 	vertices = makeData(w, vertices, show, pos)
 
-	item := NewMesh(r.shader, vertices)
+	item := NewMesh(r.shader, vertices, true)
 	if r.item != nil {
 		r.item.Release()
 	}

@@ -123,9 +123,7 @@ func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState) {
 		log.Printf("add new player %d", id)
 		cubeData := makeCubeData([]float32{}, b, [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0}, tex.Texture(b))
 		var mesh *Mesh
-		mainthread.Call(func() {
-			mesh = NewMesh(r.shader, cubeData)
-		})
+		mesh = NewMesh(r.shader, cubeData, false)
 		p = &Player{
 			shader: r.shader,
 			mesh:   mesh,
