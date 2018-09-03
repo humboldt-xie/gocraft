@@ -114,6 +114,7 @@ func (w *World) CreateBlock(id Vec3, tp *Block) {
 	w.updateBlock(id, tp)
 }
 func (w *World) Generate(id Vec3) {
+	log.Printf("generate %v", id)
 	nw := typeSandBlock
 	if noise2(-float32(id.X)*0.1, float32(id.Y)*0.1, 4, 0.8, 2) > 0.6 {
 		nw = typeGrassBlock
@@ -158,10 +159,8 @@ func (w *World) updateBlock(id Vec3, tp *Block) {
 }
 func (w *World) UpdateBlock(id Vec3, tp *Block) {
 	w.updateBlock(id, tp)
-	if tp.Type == typeAir {
-		if id.Y <= 12 {
-			w.Generate(id)
-		}
+	if id.Y <= 12 {
+		w.Generate(id)
 	}
 }
 

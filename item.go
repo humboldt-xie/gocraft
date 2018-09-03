@@ -67,6 +67,10 @@ func LoadTextureDesc() error {
 	return nil
 }
 
+type ItemDesc struct {
+	Texture []int
+}
+
 // w => left, right, top, bottom, front, back
 var itemDesc = map[int][6]int{
 	0:  {0, 0, 0, 0, 0, 0},

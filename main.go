@@ -153,9 +153,11 @@ func (g *Game) onMouseButtonCallback(win *glfw.Window, button glfw.MouseButton, 
 			}
 			if tblock == nil || tblock.Life <= 0 {
 				g.world.UpdateBlock(*block, NewBlock(typeAir))
-				g.dirtyBlock(*block)
 				go ClientUpdateBlock(*block, NewBlock(typeAir))
+			} else if tblock != nil {
+				g.world.UpdateBlock(*block, tblock)
 			}
+			g.dirtyBlock(*block)
 		}
 	}
 }

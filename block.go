@@ -41,7 +41,7 @@ func (b *Block) IsTransparent() bool {
 	if b == nil {
 		return true
 	}
-	if IsPlant(b) {
+	if IsPlant(b) || b.Life < 100 {
 		return true
 	}
 	switch b.Type {
