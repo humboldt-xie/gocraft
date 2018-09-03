@@ -1,6 +1,6 @@
-# GoCraft
+# Tinycraft
 
-A Minecraft like game written in go, just for fun!
+A Minecraft like game written in go, just for fun! thank's [GoCraft](https://github.com/icexin/gocraft)
 
 ![ScreenShot](https://i.imgur.com/vrGRDg1.png)
 
