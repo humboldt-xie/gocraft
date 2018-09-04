@@ -39,7 +39,7 @@ func (w *World) Collide(pos mgl32.Vec3) (mgl32.Vec3, bool) {
 	const pad = 0.25
 
 	head := Vec3{int(nx), int(ny), int(nz)}
-	foot := head.Down()
+	foot := Vec3{int(nx), int(ny), int(nz)}.Down()
 
 	stop := false
 	for _, b := range []Vec3{foot, head} {

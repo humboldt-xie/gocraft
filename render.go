@@ -4,6 +4,7 @@ import (
 	"flag"
 	"image"
 	"image/draw"
+	"image/png"
 	"log"
 	"os"
 	"sort"
@@ -26,7 +27,7 @@ func loadImage(fname string) ([]uint8, image.Rectangle, error) {
 		return nil, image.Rectangle{}, err
 	}
 	defer f.Close()
-	img, _, err := image.Decode(f)
+	img, err := png.Decode(f)
 	if err != nil {
 		return nil, image.Rectangle{}, err
 	}
@@ -93,7 +94,7 @@ func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 	show := [...]bool{
 		game.world.Block(id.Left()).IsTransparent(),
 		game.world.Block(id.Right()).IsTransparent(),
-		game.world.Block(id.Up()).IsTransparent(),
+		game.world.Block(id.Up()).IsTransparent() || w.Life != 100,
 		game.world.Block(id.Down()).IsTransparent(), //&& id.Y != 0
 		game.world.Block(id.Front()).IsTransparent(),
 		game.world.Block(id.Back()).IsTransparent(),
