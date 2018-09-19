@@ -181,7 +181,7 @@ func decodeBlockDbKey(b []byte) (Vec3, Vec3) {
 
 func encodeBlockDbValue(w *Block) []byte {
 	value := make([]byte, 4)
-	binary.LittleEndian.PutUint32(value, uint32(w.Type))
+	binary.LittleEndian.PutUint32(value, uint32(w.Type.Type))
 	return value
 }
 

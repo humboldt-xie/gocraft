@@ -246,6 +246,9 @@ func makePlantData(vertices []float32, w *Block, show [6]bool, block Vec3) []flo
 }
 
 func makeData(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
+	if w.Type.DrawType == DTAir {
+		return vertices
+	}
 	if IsPlant(w) {
 		vertices = makePlantData(vertices, w, show, block)
 	} else {

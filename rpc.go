@@ -73,7 +73,7 @@ func ClientUpdateBlock(id Vec3, w *Block) {
 		X:  id.X,
 		Y:  id.Y,
 		Z:  id.Z,
-		W:  w.Type,
+		W:  w.Type.Type,
 	}
 	rep := new(proto.UpdateBlockResponse)
 	err := client.Call("Block.UpdateBlock", req, rep)

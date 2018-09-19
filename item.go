@@ -52,7 +52,7 @@ func (h *ItemHub) AddTexture(w int, l, r, u, d, f, b int) {
 }
 
 func (h *ItemHub) Texture(w *Block) *BlockTexture {
-	t, ok := h.tex[w.Type]
+	t, ok := h.tex[w.Type.TextureID]
 	if !ok {
 		log.Printf("%d not found", w)
 		return h.tex[0]
@@ -140,7 +140,7 @@ var itemDesc = map[int][6]int{
 	64: {226, 224, 241, 209, 227, 225},
 }
 
-var availableItems = []Block{
+/*var availableItems = []Block{
 	Block{Type: 1},
 	Block{Type: 2},
 	Block{Type: 3},
@@ -197,4 +197,4 @@ var availableItems = []Block{
 	Block{Type: 62},
 	Block{Type: 63},
 	Block{Type: 64},
-}
+}*/

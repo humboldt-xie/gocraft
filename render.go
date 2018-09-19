@@ -138,9 +138,6 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 	defer r.facePool.Put(facedata[:0])
 
 	c.RangeBlocks(func(id Vec3, w *Block) {
-		if w.Type == 0 {
-			return
-		}
 		facedata = makeBlock(facedata, w, id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
@@ -152,12 +149,13 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 }
 
 // call on mainthread
-func (r *BlockRender) UpdateItem(w *Block) {
+func (r *BlockRender) UpdateItem(bt *BlockType) {
 	vertices := r.facePool.Get().([]float32)
 	defer r.facePool.Put(vertices[:0])
 
 	show := [...]bool{true, true, true, true, true, true}
 	pos := Vec3{0, 0, 0}
+	w := NewBlock(bt.Type)
 
 	vertices = makeData(w, vertices, show, pos)
 
