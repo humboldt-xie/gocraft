@@ -118,12 +118,12 @@ func NewBlockRender() (*BlockRender, error) {
 func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 	//pos := game.camera.Pos()
 	show := [...]bool{
-		game.world.Block(id.Left()).IsTransparent(),
-		game.world.Block(id.Right()).IsTransparent(),
+		game.world.Block(id.Left()).IsTransparent() || w.Life != 100,
+		game.world.Block(id.Right()).IsTransparent() || w.Life != 100,
 		game.world.Block(id.Up()).IsTransparent() || w.Life != 100,
 		game.world.Block(id.Down()).IsTransparent() && game.world.Block(id.Down()) != nil, //&& id.Y != 0
-		game.world.Block(id.Front()).IsTransparent(),
-		game.world.Block(id.Back()).IsTransparent(),
+		game.world.Block(id.Front()).IsTransparent() || w.Life != 100,
+		game.world.Block(id.Back()).IsTransparent() || w.Life != 100,
 	}
 	vertices = makeData(w, vertices, show, id)
 	return vertices
