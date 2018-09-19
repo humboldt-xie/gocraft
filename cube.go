@@ -10,10 +10,11 @@ const (
 )
 
 // show: left, right, up, down, front, back,
-func makeCubeData(vertices []float32, w *Block, show [6]bool, block Vec3, tex *BlockTexture) []float32 {
-	l, r := tex.Left, tex.Right
-	u, d := tex.Up, tex.Down
-	f, b := tex.Front, tex.Back
+func makeCubeData(vertices []float32, w *Block, show [6]bool, block Vec3) []float32 {
+	texture := tex.Texture(w)
+	l, r := texture.Left, texture.Right
+	u, d := texture.Up, texture.Down
+	f, b := texture.Front, texture.Back
 	x, y, z := float32(block.X), float32(block.Y), float32(block.Z)
 	cubeHeight := float32(0.5 * (float32(w.Life) - 50) / 50)
 	if show[sleft] {
@@ -194,9 +195,10 @@ func makeWireFrameData(vertices []float32, show [6]bool) []float32 {
 	return vertices
 }
 
-func makePlantData(vertices []float32, show [6]bool, block Vec3, tex *BlockTexture) []float32 {
-	l, r := tex.Left, tex.Right
-	f, b := tex.Front, tex.Back
+func makePlantData(vertices []float32, w *Block, show [6]bool, block Vec3) []float32 {
+	texture := tex.Texture(w)
+	l, r := texture.Left, texture.Right
+	f, b := texture.Front, texture.Back
 	x, y, z := float32(block.X), float32(block.Y), float32(block.Z)
 	cubeHeight := float32(0.5)
 	vertices = append(vertices, []float32{
@@ -241,11 +243,10 @@ func makePlantData(vertices []float32, show [6]bool, block Vec3, tex *BlockTextu
 }
 
 func makeData(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
-	texture := tex.Texture(w)
 	if IsPlant(w) {
-		vertices = makePlantData(vertices, show, block, texture)
+		vertices = makePlantData(vertices, w, show, block)
 	} else {
-		vertices = makeCubeData(vertices, w, show, block, texture)
+		vertices = makeCubeData(vertices, w, show, block)
 	}
 	return vertices
 }

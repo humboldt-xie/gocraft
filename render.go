@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 	"log"
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
@@ -31,8 +33,29 @@ func loadImage(fname string) ([]uint8, image.Rectangle, error) {
 	if err != nil {
 		return nil, image.Rectangle{}, err
 	}
+
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
+
+	bounds := rgba.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r := rgba.At(x, y).(color.RGBA)
+			if r.A == 0 {
+				r.R = 255
+				r.G = 0
+				r.B = 255
+			}
+			//r.R /= 2
+			//r.A = 255
+			//co := &color.RGBA64{uint16(r), uint16(g), uint16(b), uint16(a)}
+			//a = 80
+			//log.Printf("%v \n", r)
+			rgba.Set(x, y, r)
+		}
+		//panic("")
+	}
+
 	return rgba.Pix, img.Bounds(), nil
 }
 
@@ -84,18 +107,21 @@ func NewBlockRender() (*BlockRender, error) {
 	}
 	r.facePool = &sync.Pool{
 		New: func() interface{} {
-			return make([]float32, 0, r.shader.VertexFormat().Size()/4*6*6)
+			size := 500000 //r.shader.VertexFormat().Size() * 4 * 6 * 6
+			log.Printf("new face buffer %d", size)
+			return make([]float32, 0, size)
 		},
 	}
 
 	return r, nil
 }
 func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
+	//pos := game.camera.Pos()
 	show := [...]bool{
 		game.world.Block(id.Left()).IsTransparent(),
 		game.world.Block(id.Right()).IsTransparent(),
 		game.world.Block(id.Up()).IsTransparent() || w.Life != 100,
-		game.world.Block(id.Down()).IsTransparent(), //&& id.Y != 0
+		game.world.Block(id.Down()).IsTransparent() && game.world.Block(id.Down()) != nil, //&& id.Y != 0
 		game.world.Block(id.Front()).IsTransparent(),
 		game.world.Block(id.Back()).IsTransparent(),
 	}
@@ -104,6 +130,10 @@ func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 }
 
 func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
+	start := time.Now()
+	defer func() {
+		log.Printf("make chunk spend %fs %v", float64(time.Since(start))/float64(time.Second), c.Id())
+	}()
 	facedata := r.facePool.Get().([]float32)
 	defer r.facePool.Put(facedata[:0])
 
@@ -114,7 +144,7 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 		facedata = makeBlock(facedata, w, id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
-	log.Printf("chunk faces:%d", n/6)
+	log.Printf("chunk faces: %v %d %fs", c.Id(), n/6, float64(time.Since(start))/float64(time.Second), len(facedata))
 	var mesh *Mesh
 	mesh = NewMesh(r.shader, facedata, onmainthread)
 	mesh.Id = c.Id()
@@ -263,7 +293,7 @@ func (r *BlockRender) updateMeshCache() {
 	// 单次并发构造的chunk个数
 	const batchBuildChunk = 4
 	r.sortChunks(added)
-	if len(added) > 4 {
+	if len(added) > batchBuildChunk {
 		added = added[:batchBuildChunk]
 	}
 
@@ -275,10 +305,20 @@ func (r *BlockRender) updateMeshCache() {
 		removedMesh = append(removedMesh, mesh.(*Mesh))
 	}
 
+	start := time.Now()
 	newChunks := game.world.Chunks(added)
+	group := sync.WaitGroup{}
 	for _, c := range newChunks {
-		log.Printf("add cache %v", c.Id())
-		r.meshcache.Store(c.Id(), r.makeChunkMesh(c, false))
+		group.Add(1)
+		go func(c *Chunk) {
+			defer group.Done()
+			log.Printf("add cache %v", c.Id())
+			r.meshcache.Store(c.Id(), r.makeChunkMesh(c, false))
+		}(c)
+	}
+	group.Wait()
+	if len(newChunks) > 0 {
+		log.Printf("make chunks spend %fs %d", float64(time.Since(start))/float64(time.Second), len(newChunks))
 	}
 
 	mainthread.CallNonBlock(func() {

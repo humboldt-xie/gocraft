@@ -4,6 +4,8 @@ import (
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/gl/v3.3-core/gl"
+	"log"
+	"time"
 )
 
 type Mesh struct {
@@ -14,6 +16,10 @@ type Mesh struct {
 }
 
 func newMesh(shader *glhf.Shader, data []float32) *Mesh {
+	start := time.Now()
+	defer func() {
+		log.Printf("new mesh spend %fs", float64(time.Since(start))/float64(time.Second))
+	}()
 	m := new(Mesh)
 	m.faces = len(data) / (shader.VertexFormat().Size() / 4) / 6
 	if m.faces == 0 {

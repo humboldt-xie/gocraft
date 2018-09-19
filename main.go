@@ -68,6 +68,9 @@ func initGL(w, h int) *glfw.Window {
 	glfw.SwapInterval(1) // enable vsync
 	gl.Enable(gl.DEPTH_TEST)
 	gl.Enable(gl.CULL_FACE)
+	//gl.BlendFunc(gl.SRC_ALPHA, gl.ZERO)
+	//gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+	//gl.Enable(gl.BLEND)
 	return win
 }
 
@@ -244,6 +247,8 @@ func (g *Game) handleKeyInput(dt float64) {
 		}
 	}
 	g.camera.SetPos(pos)
+
+	//g.world.Generate(Vec3{int(round(pos.X())), int(round(pos.Y())), int(round(pos.Z()))})
 }
 
 func (g *Game) CurrentBlockid() Vec3 {
