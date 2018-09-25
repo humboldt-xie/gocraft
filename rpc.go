@@ -105,7 +105,7 @@ func ClientUpdatePlayerState(state Position) {
 	}
 
 	for id, player := range rep.Players {
-		game.playerRender.UpdateOrAdd(id, player)
+		game.playerRender.UpdateOrAdd(id, player, false)
 	}
 }
 

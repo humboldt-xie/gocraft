@@ -12,6 +12,8 @@ import (
 
 type PlayerMovement int
 
+var PlayerID = int32(1)
+
 const (
 	MoveForward PlayerMovement = iota
 	MoveBackward
@@ -231,7 +233,7 @@ func NewPlayerRender() (*PlayerRender, error) {
 	return r, nil
 }
 
-func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState) {
+func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState, ismainthread bool) {
 	pos := Position{
 		Vec3: mgl32.Vec3{s.X, s.Y, s.Z},
 		Rx:   s.Rx,
@@ -245,7 +247,7 @@ func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState) {
 		log.Printf("add new player %d", id)
 		cubeData := makeCubeData([]float32{}, b, [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
 		var mesh *Mesh
-		mesh = NewMesh(r.shader, cubeData, false)
+		mesh = NewMesh(r.shader, cubeData, ismainthread)
 		p = &Player{
 			shader: r.shader,
 			mesh:   mesh,
