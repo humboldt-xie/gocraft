@@ -10,34 +10,135 @@ import (
 	"github.com/icexin/gocraft-server/proto"
 )
 
-type PlayerState struct {
-	X, Y, Z float32
-	Rx, Ry  float32
+type PlayerMovement int
+
+const (
+	MoveForward PlayerMovement = iota
+	MoveBackward
+	MoveLeft
+	MoveRight
+)
+
+type Position struct {
+	mgl32.Vec3
+	Rx, Ry float32
+	T      float64
 }
 
-type playerState struct {
+/*type PositionState struct {
+	s1, s2 Position
+	t1, t2 float64
+}*/
+
+/*type playerState struct {
 	PlayerState
 	time float64
-}
+}*/
 
 type Player struct {
-	s1, s2 playerState
+	pre    Position
+	pos    Position
+	up     mgl32.Vec3
+	right  mgl32.Vec3
+	front  mgl32.Vec3
+	wfront mgl32.Vec3
+	flying bool
+	Sens   float32
 
 	shader *glhf.Shader
 	mesh   *Mesh
 }
 
+func (c *Player) State() Position {
+	return c.pos
+}
+
+func (c *Player) Move(dir PlayerMovement, delta float32) {
+	if c.flying {
+		delta = 5 * delta
+	}
+	switch dir {
+	case MoveForward:
+		if c.flying {
+			c.pos.Vec3 = c.pos.Add(c.front.Mul(delta))
+		} else {
+			c.pos.Vec3 = c.pos.Add(c.wfront.Mul(delta))
+		}
+	case MoveBackward:
+		if c.flying {
+			c.pos.Vec3 = c.pos.Sub(c.front.Mul(delta))
+		} else {
+			c.pos.Vec3 = c.pos.Sub(c.wfront.Mul(delta))
+		}
+	case MoveLeft:
+		c.pos.Vec3 = c.pos.Sub(c.right.Mul(delta))
+	case MoveRight:
+		c.pos.Vec3 = c.pos.Add(c.right.Mul(delta))
+	}
+	c.pos.T = glfw.GetTime()
+}
+
+func (c *Player) ChangeAngle(dx, dy float32) {
+	if mgl32.Abs(dx) > 200 || mgl32.Abs(dy) > 200 {
+		return
+	}
+	c.pos.Rx += dx * c.Sens
+	c.pos.Ry += dy * c.Sens
+	if c.pos.Ry > 89 {
+		c.pos.Ry = 89
+	}
+	if c.pos.Ry < -89 {
+		c.pos.Ry = -89
+	}
+	c.updateAngles()
+}
+
+func NewPlayer(pos mgl32.Vec3) *Player {
+	//b := NewBlock(64)
+	//log.Printf("add new player %d", id)
+	//cubeData := makeCubeData([]float32{}, b, [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
+	//var mesh *Mesh
+	//mesh = NewMesh(r.shader, cubeData, false)
+	p := &Player{
+		//shader: r.shader,
+		//mesh:   mesh,
+		front:  mgl32.Vec3{0, 0, -1},
+		Sens:   0.14,
+		flying: false,
+	}
+	//r.players[id] = p
+	p.pos = Position{Vec3: pos, T: glfw.GetTime(), Rx: -90, Ry: 0}
+	p.pre = p.pos
+	p.updateAngles()
+	return p
+}
+
+func (c *Player) Matrix() mgl32.Mat4 {
+	return mgl32.LookAtV(c.pos.Vec3, c.pos.Add(c.front), c.up)
+}
+func (c *Player) updateAngles() {
+	front := mgl32.Vec3{
+		cos(radian(c.pos.Ry)) * cos(radian(c.pos.Rx)),
+		sin(radian(c.pos.Ry)),
+		cos(radian(c.pos.Ry)) * sin(radian(c.pos.Rx)),
+	}
+	c.front = front.Normalize()
+	c.right = c.front.Cross(mgl32.Vec3{0, 1, 0}).Normalize()
+	c.up = c.right.Cross(c.front).Normalize()
+	c.wfront = mgl32.Vec3{0, 1, 0}.Cross(c.right).Normalize()
+}
+
 // 线性插值计算玩家位置
 func (p *Player) computeMat() mgl32.Mat4 {
-	t1 := p.s2.time - p.s1.time
-	t2 := glfw.GetTime() - p.s2.time
+	t1 := p.pos.T - p.pre.T
+	t2 := glfw.GetTime() - p.pos.T
 	t := min(float32(t2/t1), 1)
 
-	x := mix(p.s1.X, p.s2.X, t)
-	y := mix(p.s1.Y, p.s2.Y, t)
-	z := mix(p.s1.Z, p.s2.Z, t)
-	rx := mix(p.s1.Rx, p.s2.Rx, t)
-	ry := mix(p.s1.Ry, p.s2.Ry, t)
+	x := mix(p.pos.X(), p.pre.X(), t)
+	y := mix(p.pos.Y(), p.pre.Y(), t)
+	z := mix(p.pos.Z(), p.pre.Z(), t)
+	rx := mix(p.pos.Rx, p.pre.Rx, t)
+	ry := mix(p.pos.Ry, p.pre.Ry, t)
 
 	front := mgl32.Vec3{
 		cos(radian(ry)) * cos(radian(rx)),
@@ -50,8 +151,8 @@ func (p *Player) computeMat() mgl32.Mat4 {
 	return mgl32.LookAtV(pos, pos.Add(front), up).Inv()
 }
 
-func (p *Player) UpdateState(s playerState) {
-	p.s1, p.s2 = p.s2, s
+func (p *Player) UpdateState(s Position) {
+	p.pre, p.pos = p.pos, s
 }
 
 func (p *Player) Draw(mat mgl32.Mat4) {
@@ -59,6 +160,31 @@ func (p *Player) Draw(mat mgl32.Mat4) {
 
 	p.shader.SetUniformAttr(0, mat)
 	p.mesh.Draw()
+}
+func (c *Player) Restore(state Position) {
+	c.pos = state //= mgl32.Vec3{state.X, state.Y, state.Z,RX:state.RX}
+	c.updateAngles()
+}
+
+func (c *Player) SetPos(pos mgl32.Vec3) {
+	c.pos.Vec3 = pos
+	c.updateAngles()
+}
+
+func (c *Player) Pos() mgl32.Vec3 {
+	return c.pos.Vec3
+}
+
+func (c *Player) Front() mgl32.Vec3 {
+	return c.front
+}
+
+func (c *Player) FlipFlying() {
+	c.flying = !c.flying
+}
+
+func (c *Player) Flying() bool {
+	return c.flying
 }
 
 func (p *Player) Release() {
@@ -106,15 +232,11 @@ func NewPlayerRender() (*PlayerRender, error) {
 }
 
 func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState) {
-	state := playerState{
-		PlayerState: PlayerState{
-			X:  s.X,
-			Y:  s.Y,
-			Z:  s.Z,
-			Rx: s.Rx,
-			Ry: s.Ry,
-		},
-		time: glfw.GetTime(),
+	pos := Position{
+		Vec3: mgl32.Vec3{s.X, s.Y, s.Z},
+		Rx:   s.Rx,
+		Ry:   s.Ry,
+		T:    glfw.GetTime(),
 	}
 
 	p, ok := r.players[id]
@@ -129,9 +251,9 @@ func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState) {
 			mesh:   mesh,
 		}
 		r.players[id] = p
-		p.s1 = state
+		p.pos = pos
 	}
-	p.UpdateState(state)
+	p.UpdateState(pos)
 }
 
 func (r *PlayerRender) Remove(id int32) {

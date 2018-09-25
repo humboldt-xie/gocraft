@@ -16,13 +16,13 @@ func makeCubeData(vertices []float32, w *Block, show [6]bool, block Vec3) []floa
 	u, d := texture.Up, texture.Down
 	f, b := texture.Front, texture.Back
 	x, y, z := float32(block.X), float32(block.Y), float32(block.Z)
-	cubeHeight := float32(0.5 * (float32(w.Life) - 50) / 50)
+	cubeHeight := float32(0.5)                           //float32(0.5 * (float32(w.Life) - 50) / 50)
 	cubeWeight := float32(0.5 * (float32(w.Life) / 100)) //1.0 / 2
 
 	if show[sleft] {
 		vertices = append(vertices, []float32{
 			// left
-			x - cubeWeight, y - 0.5, z - cubeWeight, l[0][0], l[0][1], -1, 0, 0,
+			x - cubeWeight, y - 0.5, z - cubeWeight, l[0].X(), l[0].Y(), -1, 0, 0,
 			x - cubeWeight, y - 0.5, z + cubeWeight, l[1][0], l[1][1], -1, 0, 0,
 			x - cubeWeight, y + cubeHeight, z + cubeWeight, l[2][0], l[2][1], -1, 0, 0,
 			x - cubeWeight, y + cubeHeight, z + cubeWeight, l[3][0], l[3][1], -1, 0, 0,

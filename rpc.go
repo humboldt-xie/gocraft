@@ -86,7 +86,7 @@ func ClientUpdateBlock(id Vec3, w *Block) {
 	store.UpdateChunkVersion(id.Chunkid(), rep.Version)
 }
 
-func ClientUpdatePlayerState(state PlayerState) {
+func ClientUpdatePlayerState(state Position) {
 	if client == nil {
 		return
 	}
@@ -94,7 +94,7 @@ func ClientUpdatePlayerState(state PlayerState) {
 		Id: client.ClientId,
 	}
 	s := &req.State
-	s.X, s.Y, s.Z, s.Rx, s.Ry = state.X, state.Y, state.Z, state.Rx, state.Ry
+	s.X, s.Y, s.Z, s.Rx, s.Ry = state.X(), state.Y(), state.Z(), state.Rx, state.Ry
 	rep := new(proto.UpdateStateResponse)
 	err := client.Call("Player.UpdateState", req, rep)
 	if err == rpc.ErrShutdown {

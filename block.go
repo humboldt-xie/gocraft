@@ -17,6 +17,7 @@ const (
 	DTAir
 	DTBlock
 	DTPlant
+	DTMan
 )
 
 type BlockType struct {
@@ -26,6 +27,7 @@ type BlockType struct {
 }
 
 type Block struct {
+	ID   int
 	Type *BlockType
 	Life int
 }

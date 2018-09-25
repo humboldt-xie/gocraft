@@ -1,12 +1,15 @@
 package main
 
-import "log"
+import (
+	"github.com/go-gl/mathgl/mgl32"
+	"log"
+)
 
 var (
 	tex = NewItemHub()
 )
 
-type FaceTexture [6][2]float32
+type FaceTexture [6]mgl32.Vec2
 
 func MakeFaceTexture(idx int) FaceTexture {
 	const textureColums = 16
@@ -14,14 +17,20 @@ func MakeFaceTexture(idx int) FaceTexture {
 	dx, dy := float32(idx%textureColums)*m, float32(idx/textureColums)*m
 	n := float32(1 / 2048.0)
 	m -= n
-	return [6][2]float32{
-		{dx + n, dy + n},
-		{dx + m, dy + n},
-		{dx + m, dy + m},
-		{dx + m, dy + m},
-		{dx + n, dy + m},
-		{dx + n, dy + n},
+	from := mgl32.Vec2{dx + n, dy + n}
+	to := mgl32.Vec2{dx + m, dy + m}
+	return [6]mgl32.Vec2{
+		{from.X(), from.Y()},
+		{to.X(), from.Y()},
+		{to.X(), to.Y()},
+		{to.X(), to.Y()},
+		{from.X(), to.Y()},
+		{from.X(), from.Y()},
 	}
+}
+
+func (ft *FaceTexture) Scale(scale float32) {
+
 }
 
 type BlockTexture struct {
@@ -139,62 +148,3 @@ var itemDesc = map[int][6]int{
 	63: {207, 207, 207, 207, 207, 207},
 	64: {226, 224, 241, 209, 227, 225},
 }
-
-/*var availableItems = []Block{
-	Block{Type: 1},
-	Block{Type: 2},
-	Block{Type: 3},
-	Block{Type: 4},
-	Block{Type: 5},
-	Block{Type: 6},
-	Block{Type: 7},
-	Block{Type: 8},
-	Block{Type: 9},
-	Block{Type: 10},
-	Block{Type: 11},
-	Block{Type: 12},
-	Block{Type: 13},
-	Block{Type: 14},
-	Block{Type: 15},
-	Block{Type: 16},
-	Block{Type: 17},
-	Block{Type: 18},
-	Block{Type: 19},
-	Block{Type: 20},
-	Block{Type: 21},
-	Block{Type: 22},
-	Block{Type: 23},
-	Block{Type: 32},
-	Block{Type: 33},
-	Block{Type: 34},
-	Block{Type: 35},
-	Block{Type: 36},
-	Block{Type: 37},
-	Block{Type: 38},
-	Block{Type: 39},
-	Block{Type: 40},
-	Block{Type: 41},
-	Block{Type: 42},
-	Block{Type: 43},
-	Block{Type: 44},
-	Block{Type: 45},
-	Block{Type: 46},
-	Block{Type: 47},
-	Block{Type: 48},
-	Block{Type: 49},
-	Block{Type: 50},
-	Block{Type: 51},
-	Block{Type: 52},
-	Block{Type: 53},
-	Block{Type: 54},
-	Block{Type: 55},
-	Block{Type: 56},
-	Block{Type: 57},
-	Block{Type: 58},
-	Block{Type: 59},
-	Block{Type: 60},
-	Block{Type: 61},
-	Block{Type: 62},
-	Block{Type: 63},
-	Block{Type: 64},
-}*/

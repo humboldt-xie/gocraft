@@ -80,7 +80,7 @@ func (s *Store) UpdateBlock(id Vec3, w *Block) error {
 	})
 }
 
-func (s *Store) UpdatePlayerState(state PlayerState) error {
+func (s *Store) UpdatePlayerState(state Position) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(cameraBucket)
 		buf := new(bytes.Buffer)
@@ -90,9 +90,9 @@ func (s *Store) UpdatePlayerState(state PlayerState) error {
 	})
 }
 
-func (s *Store) GetPlayerState() PlayerState {
-	var state PlayerState
-	state.Y = 16
+func (s *Store) GetPlayerState() Position {
+	var state Position
+	state.Vec3[1] = 16
 	s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(cameraBucket)
 		value := bkt.Get(cameraBucket)

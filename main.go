@@ -15,7 +15,7 @@ import (
 	"github.com/go-gl/gl/v3.3-core/gl"
 	"github.com/go-gl/glfw/v3.2/glfw"
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/icexin/gocraft-server/proto"
+	//"github.com/icexin/gocraft-server/proto"
 )
 
 var (
@@ -27,7 +27,7 @@ var (
 type Game struct {
 	win *glfw.Window
 
-	camera   *Camera
+	player   *Player
 	lx, ly   float64
 	vy       float32
 	prevtime float64
@@ -91,7 +91,7 @@ func NewGame(w, h int) (*Game, error) {
 		game.win = win
 	})
 	game.world = NewWorld()
-	game.camera = NewCamera(mgl32.Vec3{0, 16, 0})
+	game.player = NewPlayer(mgl32.Vec3{0, 16, 0})
 	game.blockRender, err = NewBlockRender()
 	if err != nil {
 		return nil, err
@@ -138,9 +138,9 @@ func (g *Game) onMouseButtonCallback(win *glfw.Window, button glfw.MouseButton, 
 		g.setExclusiveMouse(true)
 		return
 	}
-	head := NearBlock(g.camera.Pos())
+	head := NearBlock(g.player.Pos())
 	foot := head.Down()
-	block, prev := g.world.HitTest(g.camera.Pos(), g.camera.Front())
+	block, prev := g.world.HitTest(g.player.Pos(), g.player.Front())
 	if button == glfw.MouseButton2 && action == glfw.Press {
 		if prev != nil && *prev != head && *prev != foot {
 			g.world.UpdateBlock(*prev, NewBlock(g.item.Type))
@@ -179,7 +179,7 @@ func (g *Game) onCursorPosCallback(win *glfw.Window, xpos float64, ypos float64)
 	}
 	dx, dy := xpos-g.lx, g.ly-ypos
 	g.lx, g.ly = xpos, ypos
-	g.camera.OnAngleChange(float32(dx), float32(dy))
+	g.player.ChangeAngle(float32(dx), float32(dy))
 }
 
 func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
@@ -188,7 +188,7 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 	}
 	switch key {
 	case glfw.KeyTab:
-		g.camera.FlipFlying()
+		g.player.FlipFlying()
 	case glfw.KeySpace:
 		block := g.CurrentBlockid()
 		if g.world.HasBlock(Vec3{block.X, block.Y - 2, block.Z}) {
@@ -210,27 +210,27 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 
 func (g *Game) handleKeyInput(dt float64) {
 	speed := float32(0.1)
-	if g.camera.flying {
+	if g.player.flying {
 		speed = 0.1
 	}
 	if g.win.GetKey(glfw.KeyEscape) == glfw.Press {
 		g.setExclusiveMouse(false)
 	}
 	if g.win.GetKey(glfw.KeyW) == glfw.Press {
-		g.camera.OnMoveChange(MoveForward, speed)
+		g.player.Move(MoveForward, speed)
 	}
 	if g.win.GetKey(glfw.KeyS) == glfw.Press {
-		g.camera.OnMoveChange(MoveBackward, speed)
+		g.player.Move(MoveBackward, speed)
 	}
 	if g.win.GetKey(glfw.KeyA) == glfw.Press {
-		g.camera.OnMoveChange(MoveLeft, speed)
+		g.player.Move(MoveLeft, speed)
 	}
 	if g.win.GetKey(glfw.KeyD) == glfw.Press {
-		g.camera.OnMoveChange(MoveRight, speed)
+		g.player.Move(MoveRight, speed)
 	}
-	pos := g.camera.Pos()
+	pos := g.player.Pos()
 	stop := false
-	if !g.camera.Flying() {
+	if !g.player.Flying() {
 		g.vy -= float32(dt * 20)
 		if g.vy < -50 {
 			g.vy = -50
@@ -246,13 +246,13 @@ func (g *Game) handleKeyInput(dt float64) {
 			g.vy = -g.vy * 0.1
 		}
 	}
-	g.camera.SetPos(pos)
+	g.player.SetPos(pos)
 
 	//g.world.Generate(Vec3{int(round(pos.X())), int(round(pos.Y())), int(round(pos.Z()))})
 }
 
 func (g *Game) CurrentBlockid() Vec3 {
-	pos := g.camera.Pos()
+	pos := g.player.Pos()
 	return NearBlock(pos)
 }
 
@@ -262,9 +262,9 @@ func (g *Game) ShouldClose() bool {
 
 func (g *Game) renderStat() {
 	g.fps.Update()
-	p := g.camera.Pos()
+	p := g.player.Pos()
 	cid := NearBlock(p).Chunkid()
-	blockPos, _ := g.world.HitTest(g.camera.Pos(), g.camera.Front())
+	blockPos, _ := g.world.HitTest(g.player.Pos(), g.player.Front())
 
 	life := 0
 	if blockPos != nil {
@@ -282,19 +282,19 @@ func (g *Game) renderStat() {
 func (g *Game) syncPlayerLoop() {
 	tick := time.NewTicker(time.Second / 10)
 	for range tick.C {
-		ClientUpdatePlayerState(g.camera.State())
+		ClientUpdatePlayerState(g.player.State())
 	}
 }
 
 func (g *Game) Update() {
-	pos := g.camera.Pos()
-	g.playerRender.UpdateOrAdd(1, proto.PlayerState{
+	//pos := g.camera.Pos()
+	/*g.playerRender.UpdateOrAdd(1, proto.PlayerState{
 		X:  pos.X() + 5.0,
 		Y:  pos.Y(),
 		Z:  pos.Z() + 5.0,
 		Rx: 5,
 		Ry: 0,
-	})
+	})*/
 	mainthread.Call(func() {
 		var dt float64
 		now := glfw.GetTime()
@@ -366,13 +366,13 @@ func run() {
 		log.Panic(err)
 	}
 
-	game.camera.Restore(store.GetPlayerState())
+	game.player.Restore(store.GetPlayerState())
 	tick := time.Tick(time.Second / 60)
 	for !game.ShouldClose() {
 		<-tick
 		game.Update()
 	}
-	store.UpdatePlayerState(game.camera.State())
+	store.UpdatePlayerState(game.player.State())
 }
 
 func main() {
