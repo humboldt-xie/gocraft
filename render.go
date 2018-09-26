@@ -375,6 +375,18 @@ func (r *BlockRender) checkChunks() {
 	}
 }
 
+func (r *BlockRender) DirtyBlock(id Vec3) {
+	cid := id.Chunkid()
+	r.DirtyChunk(cid)
+	neighbors := []Vec3{id.Left(), id.Right(), id.Front(), id.Back()}
+	for _, neighbor := range neighbors {
+		chunkid := neighbor.Chunkid()
+		if chunkid != cid {
+			r.DirtyChunk(chunkid)
+		}
+	}
+}
+
 func (r *BlockRender) DirtyChunk(id Vec3) {
 	mesh, ok := r.meshcache.Load(id)
 	if !ok {

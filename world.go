@@ -21,18 +21,6 @@ func NewWorld() *World {
 	}
 }
 
-func (w *World) loadChunk(id Vec3) (*Chunk, bool) {
-	chunk, ok := w.chunks.Get(id)
-	if !ok {
-		return nil, false
-	}
-	return chunk.(*Chunk), true
-}
-
-func (w *World) storeChunk(id Vec3, chunk *Chunk) {
-	w.chunks.Add(id, chunk)
-}
-
 func (w *World) Collide(pos mgl32.Vec3) (mgl32.Vec3, bool) {
 	x, y, z := pos.X(), pos.Y(), pos.Z()
 	nx, ny, nz := round(pos.X()), round(pos.Y()), round(pos.Z())
@@ -285,4 +273,16 @@ func makeChunkMap(cid Vec3) map[Vec3]*Block {
 		}
 	}
 	return m
+}
+
+func (w *World) loadChunk(id Vec3) (*Chunk, bool) {
+	chunk, ok := w.chunks.Get(id)
+	if !ok {
+		return nil, false
+	}
+	return chunk.(*Chunk), true
+}
+
+func (w *World) storeChunk(id Vec3, chunk *Chunk) {
+	w.chunks.Add(id, chunk)
 }

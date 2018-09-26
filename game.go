@@ -93,20 +93,8 @@ func (g *Game) setExclusiveMouse(exclusive bool) {
 }
 func (g *Game) UpdateBlock(id Vec3, tp *Block) {
 	g.world.UpdateBlock(id, tp)
-	g.dirtyBlock(id)
+	g.blockRender.DirtyBlock(id)
 	go ClientUpdateBlock(id, tp)
-}
-
-func (g *Game) dirtyBlock(id Vec3) {
-	cid := id.Chunkid()
-	g.blockRender.DirtyChunk(cid)
-	neighbors := []Vec3{id.Left(), id.Right(), id.Front(), id.Back()}
-	for _, neighbor := range neighbors {
-		chunkid := neighbor.Chunkid()
-		if chunkid != cid {
-			g.blockRender.DirtyChunk(chunkid)
-		}
-	}
 }
 
 func (g *Game) PutBlock(player *Player, item *BlockType) {
