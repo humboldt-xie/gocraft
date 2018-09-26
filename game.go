@@ -13,12 +13,20 @@ import (
 	"github.com/icexin/gocraft-server/proto"
 )
 
+type AI interface {
+	Think(p *Player)
+}
+
+type Physics interface {
+	Speed(a mgl32.Vec3)
+	Update(p *Player, dt float64)
+}
+
 type Game struct {
 	win *glfw.Window
 
 	player   *Player
 	lx, ly   float64
-	vy       float32
 	prevtime float64
 
 	blockRender  *BlockRender
@@ -51,7 +59,6 @@ func NewGame(w, h int) (*Game, error) {
 		game.win = win
 	})
 	game.world = NewWorld()
-	game.player = NewPlayer(mgl32.Vec3{0, 16, 0})
 	game.blockRender, err = NewBlockRender()
 	if err != nil {
 		return nil, err
@@ -67,6 +74,10 @@ func NewGame(w, h int) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	game.player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
+	game.playerRender.Add(0, game.player)
+
 	go game.blockRender.UpdateLoop()
 	go game.syncPlayerLoop()
 	return game, nil
@@ -79,6 +90,11 @@ func (g *Game) setExclusiveMouse(exclusive bool) {
 		g.win.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
 	}
 	g.exclusiveMouse = exclusive
+}
+func (g *Game) UpdateBlock(id Vec3, tp *Block) {
+	g.world.UpdateBlock(id, tp)
+	g.dirtyBlock(id)
+	go ClientUpdateBlock(id, tp)
 }
 
 func (g *Game) dirtyBlock(id Vec3) {
@@ -93,35 +109,40 @@ func (g *Game) dirtyBlock(id Vec3) {
 	}
 }
 
+func (g *Game) PutBlock(player *Player, item *BlockType) {
+	head := player.Head()
+	foot := player.Foot()
+	_, prev := g.world.HitTest(player.Pos(), player.Front())
+	if prev != nil && *prev != head && *prev != foot {
+		g.UpdateBlock(*prev, NewBlock(item.Type))
+	}
+
+}
+func (g *Game) BreakBlock(player *Player) {
+	block, _ := g.world.HitTest(player.Pos(), player.Front())
+	if block != nil {
+		tblock := g.world.Block(*block)
+		if tblock != nil {
+			tblock.Life -= 40
+		}
+		if tblock == nil || tblock.Life <= 0 {
+			tblock = NewBlock(typeAir)
+		}
+		g.UpdateBlock(*block, tblock)
+	}
+}
+
 func (g *Game) onMouseButtonCallback(win *glfw.Window, button glfw.MouseButton, action glfw.Action, mod glfw.ModifierKey) {
 	if !g.exclusiveMouse {
 		g.setExclusiveMouse(true)
 		return
 	}
-	head := NearBlock(g.player.Pos())
-	foot := head.Down()
-	block, prev := g.world.HitTest(g.player.Pos(), g.player.Front())
+
 	if button == glfw.MouseButton2 && action == glfw.Press {
-		if prev != nil && *prev != head && *prev != foot {
-			g.world.UpdateBlock(*prev, NewBlock(g.item.Type))
-			g.dirtyBlock(*prev)
-			go ClientUpdateBlock(*prev, NewBlock(g.item.Type))
-		}
+		g.PutBlock(g.player, g.item)
 	}
 	if button == glfw.MouseButton1 && action == glfw.Press {
-		if block != nil {
-			tblock := g.world.Block(*block)
-			if tblock != nil {
-				tblock.Life -= 40
-			}
-			if tblock == nil || tblock.Life <= 0 {
-				g.world.UpdateBlock(*block, NewBlock(typeAir))
-				go ClientUpdateBlock(*block, NewBlock(typeAir))
-			} else if tblock != nil {
-				g.world.UpdateBlock(*block, tblock)
-			}
-			g.dirtyBlock(*block)
-		}
+		g.BreakBlock(g.player)
 	}
 }
 
@@ -150,20 +171,20 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 	case glfw.KeyTab:
 		g.player.FlipFlying()
 	case glfw.KeySpace:
-		block := g.CurrentBlockid()
-		if g.world.HasBlock(Vec3{block.X, block.Y - 2, block.Z}) {
-			g.vy = 8
-		}
+		g.player.Jump(8)
 	case glfw.KeyN:
-		pos := g.player.Pos()
-		PlayerID += 1
-		g.playerRender.UpdateOrAdd(PlayerID, proto.PlayerState{
-			X:  pos.X() + 1.0,
-			Y:  pos.Y(),
-			Z:  pos.Z() + 1.0,
-			Rx: 5,
-			Ry: 0,
-		}, true)
+		for i := 0; i < 1; i++ {
+			pos := g.player.Pos()
+			front := g.player.Front()
+			PlayerID += 1
+			g.playerRender.UpdateOrAdd(PlayerID, proto.PlayerState{
+				X:  pos.X() + front.X() + float32(i)/5,
+				Y:  pos.Y() + front.Y(),
+				Z:  pos.Z() + front.Z() + float32(i)/5,
+				Rx: g.player.State().Rx,
+				Ry: g.player.State().Ry,
+			}, true)
+		}
 	case glfw.KeyE:
 		g.itemidx = (1 + g.itemidx) % len(Blocks)
 		g.item = &Blocks[g.itemidx]
@@ -198,27 +219,6 @@ func (g *Game) handleKeyInput(dt float64) {
 	if g.win.GetKey(glfw.KeyD) == glfw.Press {
 		g.player.Move(MoveRight, speed)
 	}
-	pos := g.player.Pos()
-	stop := false
-	if !g.player.Flying() {
-		g.vy -= float32(dt * 20)
-		if g.vy < -50 {
-			g.vy = -50
-		}
-		pos = mgl32.Vec3{pos.X(), pos.Y() + g.vy*float32(dt), pos.Z()}
-	}
-
-	pos, stop = g.world.Collide(pos)
-	if stop {
-		if g.vy > -5 {
-			g.vy = 0
-		} else if g.vy < -5 {
-			g.vy = -g.vy * 0.1
-		}
-	}
-	g.player.SetPos(pos)
-
-	//g.world.Generate(Vec3{int(round(pos.X())), int(round(pos.Y())), int(round(pos.Z()))})
 }
 
 func (g *Game) CurrentBlockid() Vec3 {
@@ -275,6 +275,10 @@ func (g *Game) Update() {
 		}
 
 		g.handleKeyInput(dt)
+
+		g.player.Physics.Update(g.player, dt)
+
+		g.playerRender.Update(dt)
 
 		gl.ClearColor(0.57, 0.71, 0.77, 1)
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)

@@ -27,6 +27,7 @@ func cos(x float32) float32 {
 	return float32(math.Cos(float64(x)))
 }
 
+//角度换弧度
 func radian(angle float32) float32 {
 	return mgl32.DegToRad(angle)
 }
