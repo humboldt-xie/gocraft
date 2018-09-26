@@ -20,10 +20,10 @@ var (
 	chunkBucket  = []byte("chunk")
 	cameraBucket = []byte("camera")
 
-	store *Store
+	store Store
 )
 
-func InitStore() error {
+func InitBoltStore() error {
 	var path string
 	if *dbpath != "" {
 		path = *dbpath
@@ -35,15 +35,25 @@ func InitStore() error {
 		return errors.New("empty db path")
 	}
 	var err error
-	store, err = NewStore(path)
+	store, err = NewBoltStore(path)
 	return err
 }
 
-type Store struct {
+type Store interface {
+	UpdateBlock(id Vec3, w *Block) error
+	UpdatePlayerState(state Position) error
+	GetPlayerState() Position
+	RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error
+	UpdateChunkVersion(id Vec3, version string) error
+	GetChunkVersion(id Vec3) string
+	Close()
+}
+
+type BoltStore struct {
 	db *bolt.DB
 }
 
-func NewStore(p string) (*Store, error) {
+func NewBoltStore(p string) (Store, error) {
 	db, err := bolt.Open(p, 0666, nil)
 	if err != nil {
 		return nil, err
@@ -64,12 +74,12 @@ func NewStore(p string) (*Store, error) {
 		return nil, err
 	}
 	db.NoSync = true
-	return &Store{
+	return &BoltStore{
 		db: db,
 	}, nil
 }
 
-func (s *Store) UpdateBlock(id Vec3, w *Block) error {
+func (s *BoltStore) UpdateBlock(id Vec3, w *Block) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		log.Printf("put %v -> %d", id, w)
 		bkt := tx.Bucket(blockBucket)
@@ -80,7 +90,7 @@ func (s *Store) UpdateBlock(id Vec3, w *Block) error {
 	})
 }
 
-func (s *Store) UpdatePlayerState(state Position) error {
+func (s *BoltStore) UpdatePlayerState(state Position) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(cameraBucket)
 		buf := new(bytes.Buffer)
@@ -90,7 +100,7 @@ func (s *Store) UpdatePlayerState(state Position) error {
 	})
 }
 
-func (s *Store) GetPlayerState() Position {
+func (s *BoltStore) GetPlayerState() Position {
 	var state Position
 	state.Vec3[1] = 16
 	s.db.View(func(tx *bolt.Tx) error {
@@ -106,7 +116,7 @@ func (s *Store) GetPlayerState() Position {
 	return state
 }
 
-func (s *Store) RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error {
+func (s *BoltStore) RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error {
 	return s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(blockBucket)
 		startkey := encodeBlockDbKey(id, Vec3{0, 0, 0})
@@ -123,7 +133,7 @@ func (s *Store) RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error {
 	})
 }
 
-func (s *Store) UpdateChunkVersion(id Vec3, version string) error {
+func (s *BoltStore) UpdateChunkVersion(id Vec3, version string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(chunkBucket)
 		key := encodeVec3(id)
@@ -131,7 +141,7 @@ func (s *Store) UpdateChunkVersion(id Vec3, version string) error {
 	})
 }
 
-func (s *Store) GetChunkVersion(id Vec3) string {
+func (s *BoltStore) GetChunkVersion(id Vec3) string {
 	var version string
 	s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(chunkBucket)
@@ -145,7 +155,7 @@ func (s *Store) GetChunkVersion(id Vec3) string {
 	return version
 }
 
-func (s *Store) Close() {
+func (s *BoltStore) Close() {
 	s.db.Sync()
 	s.db.Close()
 }

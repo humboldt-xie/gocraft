@@ -78,7 +78,7 @@ func run() {
 		log.Fatal(err)
 	}
 
-	err = InitStore()
+	err = InitBoltStore()
 	if err != nil {
 		log.Panic(err)
 	}
