@@ -264,8 +264,6 @@ func (g *Game) Update() {
 
 		g.handleKeyInput(dt)
 
-		g.player.Physics.Update(g.player, dt)
-
 		g.playerRender.Update(dt)
 
 		gl.ClearColor(0.57, 0.71, 0.77, 1)

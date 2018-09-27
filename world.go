@@ -154,7 +154,7 @@ func (w *World) UpdateBlock(id Vec3, tp *Block) {
 
 func (w *World) HasBlock(id Vec3) bool {
 	tp := w.Block(id)
-	return tp != nil && tp.Type.DrawType != DTAir
+	return tp != nil && tp.BlockType().DrawType != DTAir
 }
 
 func (w *World) Chunk(id Vec3) *Chunk {

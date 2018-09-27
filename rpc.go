@@ -73,7 +73,7 @@ func ClientUpdateBlock(id Vec3, w *Block) {
 		X:  id.X,
 		Y:  id.Y,
 		Z:  id.Z,
-		W:  w.Type.Type,
+		W:  w.BlockType().Type,
 	}
 	rep := new(proto.UpdateBlockResponse)
 	err := client.Call("Block.UpdateBlock", req, rep)
@@ -115,8 +115,9 @@ type BlockService struct {
 func (s *BlockService) UpdateBlock(req *proto.UpdateBlockRequest, rep *proto.UpdateBlockResponse) error {
 	log.Printf("rpc::UpdateBlock:%v", *req)
 	bid := Vec3{req.X, req.Y, req.Z}
+	//game.UpdateBlock(bid, NewBlock(req.W))
 	game.world.UpdateBlock(bid, NewBlock(req.W))
-	game.blockRender.DirtyChunk(bid.Chunkid())
+	game.blockRender.DirtyBlock(bid)
 	return nil
 }
 

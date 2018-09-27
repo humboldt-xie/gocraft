@@ -97,13 +97,15 @@ func run() {
 		log.Panic(err)
 	}
 
-	game.player.Restore(store.GetPlayerState())
+	game.player = store.GetPlayer()
+	game.playerRender.Add(0, game.player)
+
 	tick := time.Tick(time.Second / 60)
 	for !game.ShouldClose() {
 		<-tick
 		game.Update()
 	}
-	store.UpdatePlayerState(game.player.State())
+	store.UpdatePlayer(game.player)
 }
 
 func main() {

@@ -28,18 +28,23 @@ type BlockType struct {
 
 type Block struct {
 	ID   int
-	Type *BlockType
+	Type int
 	Life int
 }
 
 func (b *Block) New() *Block {
-	return NewBlock(b.Type.Type)
+	return NewBlock(b.Type)
 }
 
 func NewBlock(t int) *Block {
+	block := &Block{Type: t, Life: 100}
+	return block
+}
+
+func (b *Block) BlockType() *BlockType {
 	for i := 0; i < len(Blocks); i++ {
-		if Blocks[i].Type == t {
-			return &Block{Type: &Blocks[i], Life: 100}
+		if Blocks[i].Type == b.Type {
+			return &Blocks[i]
 		}
 	}
 	return nil
@@ -49,7 +54,7 @@ func IsPlant(tp *Block) bool {
 	if tp == nil {
 		return false
 	}
-	return tp.Type.DrawType == DTPlant
+	return tp.BlockType().DrawType == DTPlant
 }
 
 func (b *Block) IsTransparent() bool {
@@ -59,14 +64,14 @@ func (b *Block) IsTransparent() bool {
 	if IsPlant(b) || b.Life < 100 {
 		return true
 	}
-	return b.Type.DrawType == DTAir
+	return b.BlockType().DrawType == DTAir
 }
 
 func IsObstacle(tp *Block) bool {
 	if tp == nil {
 		return true
 	}
-	switch tp.Type.DrawType {
+	switch tp.BlockType().DrawType {
 	case DTPlant, DTAir:
 		return false
 	case DTBlock:

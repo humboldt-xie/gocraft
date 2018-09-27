@@ -28,12 +28,13 @@ type Position struct {
 }
 
 type Player struct {
-	pre     Position
-	pos     Position
-	flying  bool
+	Position
+	ID      int
 	Sens    float32
-	AI      AI
-	Physics Physics
+	pre     Position
+	flying  bool
+	ai      AI
+	physics Physics
 }
 
 func (c *Player) Head() Vec3 {
@@ -44,12 +45,13 @@ func (c *Player) Foot() Vec3 {
 }
 
 func (c *Player) State() Position {
-	return c.pos
+	return c.Position
 }
+
 func (c *Player) Jump(delta float32) {
 	block := game.CurrentBlockid()
 	if game.world.HasBlock(Vec3{block.X, block.Y - 2, block.Z}) {
-		c.Physics.Speed(mgl32.Vec3{0, delta, 0})
+		c.physics.Speed(mgl32.Vec3{0, delta, 0})
 	}
 }
 
@@ -57,75 +59,75 @@ func (c *Player) Move(dir PlayerMovement, delta float32) {
 	if c.flying {
 		delta = 5 * delta
 	}
-	c.pre = c.pos
-	c.pos.T = glfw.GetTime()
+	c.pre = c.Position
+	c.Position.T = glfw.GetTime()
 	switch dir {
 	case MoveForward:
 		if c.flying {
-			c.pos.Vec3 = c.pos.Add(c.Front().Mul(delta))
+			c.Position.Vec3 = c.Position.Add(c.Front().Mul(delta))
 		} else {
-			c.pos.Vec3 = c.pos.Add(c.WalkFront().Mul(delta))
+			c.Position.Vec3 = c.Position.Add(c.WalkFront().Mul(delta))
 		}
 	case MoveBackward:
 		if c.flying {
-			c.pos.Vec3 = c.pos.Sub(c.Front().Mul(delta))
+			c.Position.Vec3 = c.Position.Sub(c.Front().Mul(delta))
 		} else {
-			c.pos.Vec3 = c.pos.Sub(c.WalkFront().Mul(delta))
+			c.Position.Vec3 = c.Position.Sub(c.WalkFront().Mul(delta))
 		}
 	case MoveLeft:
-		c.pos.Vec3 = c.pos.Sub(c.Right().Mul(delta))
+		c.Position.Vec3 = c.Position.Sub(c.Right().Mul(delta))
 	case MoveRight:
-		c.pos.Vec3 = c.pos.Add(c.Right().Mul(delta))
+		c.Position.Vec3 = c.Position.Add(c.Right().Mul(delta))
 	}
-	c.pos.T = glfw.GetTime()
-	c.UpdateState(c.pos)
+	c.Position.T = glfw.GetTime()
+	c.UpdateState(c.Position)
 }
 
 func (c *Player) ChangeAngle(dx, dy float32) {
 	if mgl32.Abs(dx) > 200 || mgl32.Abs(dy) > 200 {
 		return
 	}
-	c.pre = c.pos
-	c.pos.T = glfw.GetTime()
-	c.pos.Rx += dx * c.Sens
-	c.pos.Ry += dy * c.Sens
-	if c.pos.Ry > 89 {
-		c.pos.Ry = 89
+	c.pre = c.Position
+	c.Position.T = glfw.GetTime()
+	c.Position.Rx += dx * c.Sens
+	c.Position.Ry += dy * c.Sens
+	if c.Position.Ry > 89 {
+		c.Position.Ry = 89
 	}
-	if c.pos.Ry < -89 {
-		c.pos.Ry = -89
+	if c.Position.Ry < -89 {
+		c.Position.Ry = -89
 	}
 }
 
 func NewPlayer(pos mgl32.Vec3, ai AI, phy Physics) *Player {
 	p := &Player{
 		//front:  mgl32.Vec3{0, 0, -1},
-		AI:      ai,
-		Physics: phy,
+		ai:      ai,
+		physics: phy,
 		Sens:    0.14,
 		flying:  false,
 	}
 	//r.players[id] = p
-	p.pos = Position{Vec3: pos, T: glfw.GetTime(), Rx: -90, Ry: 0}
-	p.pre = p.pos
+	p.Position = Position{Vec3: pos, T: glfw.GetTime(), Rx: -90, Ry: 0}
+	p.pre = p.Position
 	return p
 }
 
 func (c *Player) Matrix() mgl32.Mat4 {
-	return mgl32.LookAtV(c.pos.Vec3, c.pos.Add(c.Front()), c.Up())
+	return mgl32.LookAtV(c.Position.Vec3, c.Position.Add(c.Front()), c.Up())
 }
 
 // 线性插值计算玩家位置
 func (p *Player) computeMat() mgl32.Mat4 {
-	t1 := p.pos.T - p.pre.T
-	t2 := glfw.GetTime() - p.pos.T
+	t1 := p.Position.T - p.pre.T
+	t2 := glfw.GetTime() - p.Position.T
 	t := min(float32(t2/t1), 1)
 
-	x := mix(p.pos.X(), p.pre.X(), t)
-	y := mix(p.pos.Y(), p.pre.Y(), t)
-	z := mix(p.pos.Z(), p.pre.Z(), t)
-	rx := mix(p.pos.Rx, p.pre.Rx, t)
-	ry := mix(p.pos.Ry, p.pre.Ry, t)
+	x := mix(p.Position.X(), p.pre.X(), t)
+	y := mix(p.Position.Y(), p.pre.Y(), t)
+	z := mix(p.Position.Z(), p.pre.Z(), t)
+	rx := mix(p.Position.Rx, p.pre.Rx, t)
+	ry := mix(p.Position.Ry, p.pre.Ry, t)
 
 	front := mgl32.Vec3{
 		cos(radian(ry)) * cos(radian(rx)),
@@ -139,21 +141,21 @@ func (p *Player) computeMat() mgl32.Mat4 {
 }
 
 func (p *Player) UpdateState(s Position) {
-	p.pre, p.pos = p.pos, s
+	p.pre, p.Position = p.Position, s
 }
 
 func (c *Player) Restore(state Position) {
-	c.pos = state //= mgl32.Vec3{state.X, state.Y, state.Z,RX:state.RX}
+	c.Position = state //= mgl32.Vec3{state.X, state.Y, state.Z,RX:state.RX}
 }
 
 func (c *Player) SetPos(pos mgl32.Vec3) {
-	c.pre = c.pos
-	c.pos.Vec3 = pos
-	c.pos.T = glfw.GetTime()
+	c.pre = c.Position
+	c.Position.Vec3 = pos
+	c.Position.T = glfw.GetTime()
 }
 
 func (c *Player) Pos() mgl32.Vec3 {
-	return c.pos.Vec3
+	return c.Position.Vec3
 }
 func (c *Player) Up() mgl32.Vec3 {
 	return c.Right().Cross(c.Front()).Normalize()
@@ -168,9 +170,9 @@ func (c *Player) Right() mgl32.Vec3 {
 
 func (c *Player) Front() mgl32.Vec3 {
 	front := mgl32.Vec3{
-		cos(radian(c.pos.Ry)) * cos(radian(c.pos.Rx)),
-		sin(radian(c.pos.Ry)),
-		cos(radian(c.pos.Ry)) * sin(radian(c.pos.Rx)),
+		cos(radian(c.Position.Ry)) * cos(radian(c.Position.Rx)),
+		sin(radian(c.Position.Ry)),
+		cos(radian(c.Position.Ry)) * sin(radian(c.Position.Rx)),
 	}
 	return front.Normalize()
 }
@@ -310,11 +312,11 @@ func (r *PlayerRender) DrawPlayer(p *Player, mat mgl32.Mat4) {
 }
 func (r *PlayerRender) Update(dt float64) {
 	for _, p := range r.players {
-		if p.AI != nil {
-			p.AI.Think(p)
+		if p.ai != nil {
+			p.ai.Think(p)
 		}
-		if p.Physics != nil {
-			p.Physics.Update(p, dt)
+		if p.physics != nil {
+			p.physics.Update(p, dt)
 		}
 	}
 }

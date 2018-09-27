@@ -61,7 +61,7 @@ func (h *ItemHub) AddTexture(w int, l, r, u, d, f, b int) {
 }
 
 func (h *ItemHub) Texture(w *Block) *BlockTexture {
-	t, ok := h.tex[w.Type.TextureID]
+	t, ok := h.tex[w.BlockType().TextureID]
 	if !ok {
 		log.Printf("%d not found", w)
 		return h.tex[0]

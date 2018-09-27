@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 
 	"github.com/boltdb/bolt"
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 var (
@@ -41,8 +43,9 @@ func InitBoltStore() error {
 
 type Store interface {
 	UpdateBlock(id Vec3, w *Block) error
-	UpdatePlayerState(state Position) error
-	GetPlayerState() Position
+	//UpdatePlayerState(state Position) error
+	UpdatePlayer(p *Player) error
+	GetPlayer() *Player
 	RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error
 	UpdateChunkVersion(id Vec3, version string) error
 	GetChunkVersion(id Vec3) string
@@ -90,30 +93,35 @@ func (s *BoltStore) UpdateBlock(id Vec3, w *Block) error {
 	})
 }
 
-func (s *BoltStore) UpdatePlayerState(state Position) error {
+func (s *BoltStore) UpdatePlayer(p *Player) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(cameraBucket)
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, &state)
-		bkt.Put(cameraBucket, buf.Bytes())
+		b, err := json.Marshal(p)
+		if err != nil {
+			return err
+		}
+		bkt.Put(cameraBucket, b)
 		return nil
 	})
 }
 
-func (s *BoltStore) GetPlayerState() Position {
-	var state Position
-	state.Vec3[1] = 16
+func (s *BoltStore) GetPlayer() (player *Player) {
+	player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
+	//var state Position
+	//state.Vec3[1] = 16
 	s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(cameraBucket)
 		value := bkt.Get(cameraBucket)
 		if value == nil {
 			return nil
 		}
-		buf := bytes.NewBuffer(value)
-		binary.Read(buf, binary.LittleEndian, &state)
+		err := json.Unmarshal(value, player)
+		if err != nil {
+			return err
+		}
 		return nil
 	})
-	return state
+	return player
 }
 
 func (s *BoltStore) RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error {
@@ -127,7 +135,9 @@ func (s *BoltStore) RangeBlocks(id Vec3, f func(bid Vec3, w *Block)) error {
 				break
 			}
 			w := decodeBlockDbValue(v)
-			f(bid, w)
+			if w != nil {
+				f(bid, w)
+			}
 		}
 		return nil
 	})
@@ -190,14 +200,11 @@ func decodeBlockDbKey(b []byte) (Vec3, Vec3) {
 }
 
 func encodeBlockDbValue(w *Block) []byte {
-	value := make([]byte, 4)
-	binary.LittleEndian.PutUint32(value, uint32(w.Type.Type))
+	value, _ := json.Marshal(w)
 	return value
 }
 
-func decodeBlockDbValue(b []byte) *Block {
-	if len(b) != 4 {
-		log.Panicf("bad db value length:%d", len(b))
-	}
-	return NewBlock(int(binary.LittleEndian.Uint32(b)))
+func decodeBlockDbValue(b []byte) (r *Block) {
+	json.Unmarshal(b, &r)
+	return r
 }
