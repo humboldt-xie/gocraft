@@ -84,12 +84,19 @@ func run() {
 	}
 	defer store.Close()
 
-	err = InitClient()
-	if err != nil {
-		log.Panic(err)
-	}
-	if client != nil {
-		defer client.Close()
+	if *listenAddr != "" {
+		err := InitService()
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		err = InitClient()
+		if err != nil {
+			log.Panic(err)
+		}
+		if client != nil {
+			defer client.Close()
+		}
 	}
 
 	game, err = NewGame(800, 600)
@@ -98,7 +105,11 @@ func run() {
 	}
 
 	game.player = store.GetPlayer()
-	game.playerRender.Add(0, game.player)
+	if client == nil {
+		game.playerRender.Add(0, game.player)
+	} else {
+		game.playerRender.Add(client.ClientID, game.player)
+	}
 
 	tick := time.Tick(time.Second / 60)
 	for !game.ShouldClose() {

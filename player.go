@@ -188,8 +188,8 @@ func (c *Player) Flying() bool {
 type PlayerRender struct {
 	shader  *glhf.Shader
 	texture *glhf.Texture
-	players map[int32]*Player
-	mesh    *Mesh
+	//players map[int32]*Player
+	mesh *Mesh
 }
 
 func NewPlayerRender() (*PlayerRender, error) {
@@ -202,7 +202,7 @@ func NewPlayerRender() (*PlayerRender, error) {
 	}
 
 	r := &PlayerRender{
-		players: make(map[int32]*Player),
+		//players: make(map[int32]*Player),
 	}
 	mainthread.Call(func() {
 		r.shader, err = glhf.NewShader(glhf.AttrFormat{
@@ -229,7 +229,9 @@ func NewPlayerRender() (*PlayerRender, error) {
 	return r, nil
 }
 func (r *PlayerRender) Add(id int32, p *Player) {
-	r.players[id] = p
+	//r.players[id] = p
+	log.Printf("%v\n", game)
+	game.players.Store(id, p)
 }
 
 func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState, ismainthread bool) {
@@ -239,12 +241,15 @@ func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState, ismainthread b
 		Ry:   s.Ry,
 		T:    glfw.GetTime(),
 	}
+	var p *Player
 
-	p, ok := r.players[id]
+	mp, ok := game.players.Load(id)
 	if !ok {
 		log.Printf("add new player %d", id)
-		p = NewPlayer(pos.Vec3, &CircleAI{}, &SimplePhysics{})
+		p = NewPlayer(pos.Vec3, nil, &SimplePhysics{})
 		r.Add(id, p)
+	} else {
+		p = mp.(*Player)
 	}
 	p.UpdateState(pos)
 }
@@ -257,7 +262,7 @@ func (r *PlayerRender) Remove(id int32) {
 			p.Release()
 		})
 	}*/
-	delete(r.players, id)
+	game.players.Delete(id)
 
 }
 
@@ -311,23 +316,27 @@ func (r *PlayerRender) DrawPlayer(p *Player, mat mgl32.Mat4) {
 	r.mesh.Draw()
 }
 func (r *PlayerRender) Update(dt float64) {
-	for _, p := range r.players {
+	game.players.Range(func(k, v interface{}) bool {
+		p := v.(*Player)
 		if p.ai != nil {
 			p.ai.Think(p)
 		}
 		if p.physics != nil {
 			p.physics.Update(p, dt)
 		}
-	}
+		return true
+	})
 }
 
 func (r *PlayerRender) Draw() {
 	mat := game.blockRender.get3dmat()
 	r.shader.Begin()
 	r.texture.Begin()
-	for _, p := range r.players {
+	game.players.Range(func(k, v interface{}) bool {
+		p := v.(*Player)
 		r.DrawPlayer(p, mat)
-	}
+		return true
+	})
 	r.texture.End()
 	r.shader.End()
 }

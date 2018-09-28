@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	_ "image/png"
@@ -25,6 +26,7 @@ type Physics interface {
 type Game struct {
 	win *glfw.Window
 
+	players  sync.Map
 	player   *Player
 	lx, ly   float64
 	prevtime float64
@@ -76,7 +78,13 @@ func NewGame(w, h int) (*Game, error) {
 	}
 
 	game.player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
-	game.playerRender.Add(0, game.player)
+	//game.playerRender.Add(0, game.player)
+	if client == nil {
+		game.players.Store(int32(0), game.player)
+	} else {
+		game.players.Store(int32(client.ClientID), game.player)
+
+	}
 
 	go game.blockRender.UpdateLoop()
 	go game.syncPlayerLoop()
