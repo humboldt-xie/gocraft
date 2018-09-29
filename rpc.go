@@ -11,8 +11,6 @@ import (
 	"sync/atomic"
 
 	"github.com/hashicorp/yamux"
-	//gocraft "github.com/icexin/gocraft-server/client"
-	"github.com/icexin/gocraft-server/proto"
 )
 
 var (
@@ -165,12 +163,12 @@ func ClientFetchChunk(id Vec3, f func(bid Vec3, w *Block)) {
 	if client == nil {
 		return
 	}
-	req := proto.FetchChunkRequest{
+	req := FetchChunkRequest{
 		P:       id.X,
 		Q:       id.Z,
 		Version: store.GetChunkVersion(id),
 	}
-	rep := new(proto.FetchChunkResponse)
+	rep := new(FetchChunkResponse)
 	err := client.Call("Block.FetchChunk", req, rep)
 	if err == rpc.ErrShutdown {
 		return
@@ -191,16 +189,16 @@ func ClientUpdateBlock(id Vec3, w *Block) {
 		return
 	}
 	cid := id.Chunkid()
-	req := &proto.UpdateBlockRequest{
-		Id: client.ClientID,
-		P:  cid.X,
-		Q:  cid.Z,
-		X:  id.X,
-		Y:  id.Y,
-		Z:  id.Z,
-		W:  w.BlockType().Type,
+	req := &UpdateBlockRequest{
+		Id:    client.ClientID,
+		P:     cid.X,
+		Q:     cid.Z,
+		X:     id.X,
+		Y:     id.Y,
+		Z:     id.Z,
+		Block: w,
 	}
-	rep := new(proto.UpdateBlockResponse)
+	rep := new(UpdateBlockResponse)
 	err := client.Call("Block.UpdateBlock", req, rep)
 	if err == rpc.ErrShutdown {
 		return
@@ -215,12 +213,12 @@ func ClientUpdatePlayerState(state Position) {
 	if client == nil {
 		return
 	}
-	req := &proto.UpdateStateRequest{
+	req := &UpdateStateRequest{
 		Id: client.ClientID,
 	}
 	s := &req.State
 	s.X, s.Y, s.Z, s.Rx, s.Ry = state.X(), state.Y(), state.Z(), state.Rx, state.Ry
-	rep := new(proto.UpdateStateResponse)
+	rep := new(UpdateStateResponse)
 	err := client.Call("Player.UpdateState", req, rep)
 	if err == rpc.ErrShutdown {
 		return
@@ -252,7 +250,7 @@ func (s *StatusService) InitClient(req *InitClientRequest, rep *InitClientRespon
 type BlockService struct {
 }
 
-func (s *BlockService) FetchChunk(req *proto.FetchChunkRequest, rep *proto.FetchChunkResponse) error {
+func (s *BlockService) FetchChunk(req *FetchChunkRequest, rep *FetchChunkResponse) error {
 	id := Vec3{req.P, 0, req.Q}
 	version := store.GetChunkVersion(id)
 	rep.Version = version
@@ -264,11 +262,11 @@ func (s *BlockService) FetchChunk(req *proto.FetchChunkRequest, rep *proto.Fetch
 	})
 	return nil
 }
-func (s *BlockService) UpdateBlock(req *proto.UpdateBlockRequest, rep *proto.UpdateBlockResponse) error {
+func (s *BlockService) UpdateBlock(req *UpdateBlockRequest, rep *UpdateBlockResponse) error {
 	log.Printf("rpc::UpdateBlock:%v", *req)
 	bid := Vec3{req.X, req.Y, req.Z}
 	//game.UpdateBlock(bid, NewBlock(req.W))
-	game.world.UpdateBlock(bid, NewBlock(req.W))
+	game.world.UpdateBlock(bid, req.Block)
 	game.blockRender.DirtyBlock(bid)
 	return nil
 }
@@ -276,37 +274,24 @@ func (s *BlockService) UpdateBlock(req *proto.UpdateBlockRequest, rep *proto.Upd
 type PlayerService struct {
 }
 
-func (s *PlayerService) UpdateState(req *proto.UpdateStateRequest, rep *proto.UpdateStateResponse) error {
+func (s *PlayerService) UpdateState(req *UpdateStateRequest, rep *UpdateStateResponse) error {
 	game.playerRender.UpdateOrAdd(req.Id, req.State, false)
-	rep.Players = make(map[int32]proto.PlayerState)
+	rep.Players = make(map[int32]PlayerState)
 	game.players.Range(func(k, v interface{}) bool {
 		id := k.(int32)
 		p := v.(*Player)
 		if id == req.Id {
 			return true
 		}
-		state := proto.PlayerState{X: p.X(), Y: p.Y(), Z: p.Z(), Rx: p.Rx, Ry: p.Ry}
+		state := PlayerState{X: p.X(), Y: p.Y(), Z: p.Z(), Rx: p.Rx, Ry: p.Ry}
 		rep.Players[id] = state
 		return true
 	})
 
-	/*s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if _, ok := s.players[req.Id]; !ok {
-		return nil
-	}
-	s.players[req.Id] = req.State
-	rep.Players = make(map[int32]proto.PlayerState)
-	for id, state := range s.players {
-		if id == req.Id {
-			continue
-		}
-		rep.Players[id] = state
-	}*/
 	return nil
 }
 
-func (s *PlayerService) RemovePlayer(req *proto.RemovePlayerRequest, rep *proto.RemovePlayerResponse) error {
+func (s *PlayerService) RemovePlayer(req *RemovePlayerRequest, rep *RemovePlayerResponse) error {
 	game.playerRender.Remove(req.Id)
 	return nil
 }
