@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
@@ -23,7 +25,7 @@ var (
 	renderRadius = flag.Int("r", 6, "render radius")
 )
 
-func loadImage(fname string) ([]uint8, image.Rectangle, error) {
+func loadImage(fname string) (*image.RGBA, image.Rectangle, error) {
 	f, err := os.Open(fname)
 	if err != nil {
 		return nil, image.Rectangle{}, err
@@ -46,17 +48,11 @@ func loadImage(fname string) ([]uint8, image.Rectangle, error) {
 				r.G = 0
 				r.B = 255
 			}
-			//r.R /= 2
-			//r.A = 255
-			//co := &color.RGBA64{uint16(r), uint16(g), uint16(b), uint16(a)}
-			//a = 80
-			//log.Printf("%v \n", r)
 			rgba.Set(x, y, r)
 		}
-		//panic("")
 	}
 
-	return rgba.Pix, img.Bounds(), nil
+	return rgba, img.Bounds(), nil
 }
 
 type BlockRender struct {
@@ -69,6 +65,7 @@ type BlockRender struct {
 	meshcache sync.Map //map[Vec3]*Mesh
 
 	stat Stat
+	text *Text
 
 	item *Mesh
 }
@@ -96,11 +93,12 @@ func NewBlockRender() (*BlockRender, error) {
 			glhf.Attr{Name: "camera", Type: glhf.Vec3},
 			glhf.Attr{Name: "fogdis", Type: glhf.Float},
 		}, blockVertexSource, blockFragmentSource)
-
+		r.text = &Text{shader: r.shader}
+		r.text.UpdateTexture()
 		if err != nil {
 			return
 		}
-		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img)
+		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img.Pix)
 	})
 	if err != nil {
 		return nil, err
@@ -444,6 +442,120 @@ func (r *BlockRender) drawItem() {
 	r.item.Draw()
 }
 
+type UnicodePage struct {
+	rgba *image.RGBA
+	rect image.Rectangle
+}
+
+func (u *UnicodePage) Draw(r *image.RGBA, p image.Point, index int) {
+	ip := image.Point{index % 16 * 16, index / 16 * 16}
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := u.rgba.At(ip.X+x, ip.Y+y).(color.RGBA)
+			r.Set(p.X+x, p.Y+y, c)
+		}
+	}
+
+}
+
+type Text struct {
+	texture *glhf.Texture
+	shader  *glhf.Shader
+	face    *Mesh
+	texts   []string
+	rgba    *image.RGBA
+	pages   map[int]*UnicodePage
+}
+
+func (t *Text) LoadPages() {
+	t.pages = make(map[int]*UnicodePage)
+	for i := 0; i < 256; i++ {
+		img, rect, err := loadImage(fmt.Sprintf("font/unicode_page_%.2x.png", i))
+		if err != nil {
+			//panic(err)
+			continue
+		}
+		t.pages[i] = &UnicodePage{rgba: img, rect: rect}
+	}
+}
+
+func (t *Text) UpdateTexture() {
+	// 80 one line  256/16 one text
+	rect := image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{16 * 60, 60 * 16}}
+	if t.rgba == nil {
+		t.LoadPages()
+		t.rgba = image.NewRGBA(rect)
+		for y := rect.Min.Y; y < rect.Max.Y; y++ {
+			for x := rect.Min.X; x < rect.Max.X; x++ {
+				r := t.rgba.At(x, y).(color.RGBA)
+				r.R = 255
+				r.G = 0
+				r.B = 255
+				t.rgba.Set(x, y, r)
+			}
+		}
+	}
+	s := "你好啊 hello world"
+	for i, w, j := 0, 0, 0; i < len(s); i += w {
+		runeValue, width := utf8.DecodeRuneInString(s[i:])
+		tidx := int(runeValue % 256)
+		pidx := int(runeValue / 256)
+		page := t.pages[pidx]
+		log.Printf("update textrue %d", j)
+		if runeValue != rune(' ') {
+			page.Draw(t.rgba, image.Point{j * 16, 10}, tidx)
+		}
+		w = width
+		j += 1
+	}
+
+	t.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, t.rgba.Pix)
+}
+
+func (t *Text) Draw() {
+	texture := t.texture
+	texture.Begin()
+	defer texture.End()
+	cubeWeight := float32(1)
+	cubeHeight := float32(1)
+	if t.face == nil {
+		x := float32(0)
+		y := float32(0)
+		z := float32(0)
+		//f := MakeFaceTexture(1)
+		f := [6][2]float32{
+			{0, 0},
+			{1, 0},
+			{1, 1},
+			{1, 1},
+			{0, 1},
+			{0, 0},
+		}
+		vertices := []float32{
+			x, y, z, f[0][0], f[0][1], 0, 0, 1,
+			x + cubeWeight, y, z, f[1][0], f[1][1], 0, 0, 1,
+			x + cubeWeight, y + cubeHeight, z, f[2][0], f[2][1], 0, 0, 1,
+			x + cubeWeight, y + cubeHeight, z, f[3][0], f[3][1], 0, 0, 1,
+			x, y + cubeHeight, z, f[4][0], f[4][1], 0, 0, 1,
+			x, y, z, f[5][0], f[5][1], 0, 0, 1,
+		}
+		t.face = NewMesh(t.shader, vertices, true)
+	}
+
+	projection := mgl32.Ortho2D(0, 1, 0, 1)
+	model := mgl32.Translate3D(0, 0, 0)
+	mat := projection.Mul4(model)
+	t.shader.SetUniformAttr(0, mat)
+	t.shader.SetUniformAttr(1, mgl32.Vec3{0, 0, 0})
+	t.shader.SetUniformAttr(2, float32(*renderRadius)*ChunkWidth)
+	//r.item.Draw()
+	t.face.Draw()
+}
+
+func (r *BlockRender) drawText() {
+	r.text.Draw()
+}
+
 func (r *BlockRender) Draw() {
 	r.shader.Begin()
 	r.texture.Begin()
@@ -453,6 +565,10 @@ func (r *BlockRender) Draw() {
 
 	r.shader.End()
 	r.texture.End()
+
+	r.shader.Begin()
+	r.drawText()
+	r.shader.End()
 }
 
 type Stat struct {

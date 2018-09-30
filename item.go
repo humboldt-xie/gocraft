@@ -11,6 +11,7 @@ var (
 
 type FaceTexture [6]mgl32.Vec2
 
+//16*16
 func MakeFaceTexture(idx int) FaceTexture {
 	const textureColums = 16
 	var m = 1 / float32(textureColums)

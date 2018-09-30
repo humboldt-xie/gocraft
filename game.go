@@ -11,7 +11,6 @@ import (
 	"github.com/go-gl/gl/v3.3-core/gl"
 	"github.com/go-gl/glfw/v3.2/glfw"
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/icexin/gocraft-server/proto"
 )
 
 type AI interface {
@@ -173,7 +172,7 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 			pos := g.player.Pos()
 			front := g.player.Front()
 			PlayerID += 1
-			g.playerRender.UpdateOrAdd(PlayerID, proto.PlayerState{
+			g.playerRender.UpdateOrAdd(PlayerID, PlayerState{
 				X:  pos.X() + front.X() + float32(i)/5,
 				Y:  pos.Y() + front.Y(),
 				Z:  pos.Z() + front.Z() + float32(i)/5,

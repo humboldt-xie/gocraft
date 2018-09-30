@@ -7,7 +7,6 @@ import (
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/glfw/v3.2/glfw"
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/icexin/gocraft-server/proto"
 )
 
 type PlayerMovement int
@@ -216,7 +215,7 @@ func NewPlayerRender() (*PlayerRender, error) {
 		if err != nil {
 			return
 		}
-		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img)
+		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img.Pix)
 
 		cubeData := makeCubeData([]float32{}, NewBlock(64), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
 		r.mesh = NewMesh(r.shader, cubeData, true)
@@ -234,7 +233,7 @@ func (r *PlayerRender) Add(id int32, p *Player) {
 	game.players.Store(id, p)
 }
 
-func (r *PlayerRender) UpdateOrAdd(id int32, s proto.PlayerState, ismainthread bool) {
+func (r *PlayerRender) UpdateOrAdd(id int32, s PlayerState, ismainthread bool) {
 	pos := Position{
 		Vec3: mgl32.Vec3{s.X, s.Y, s.Z},
 		Rx:   s.Rx,
