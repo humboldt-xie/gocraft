@@ -230,17 +230,21 @@ func (g *Game) renderStat() {
 	p := g.player.Pos()
 	cid := NearBlock(p).Chunkid()
 	blockPos, _ := g.world.HitTest(g.player.Pos(), g.player.Front())
+	c := g.world.Chunk(cid)
 
 	life := 0
+	show := [6]bool{}
 	if blockPos != nil {
 		block := g.world.Block(*blockPos)
 		if block != nil {
 			life = block.Life
 		}
+		show = showFaces(*blockPos)
 	}
 	stat := g.blockRender.Stat()
-	title := fmt.Sprintf("[%.2f %.2f %.2f] %v [%d/%d %d] %d %d/100", p.X(), p.Y(), p.Z(),
-		cid, stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps(), life)
+	title := fmt.Sprintf("[%.2f %.2f %.2f] %v(v:%d) [%d/%d %d] %d %d/100 %v", p.X(), p.Y(), p.Z(),
+		cid, c.V(), stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps(), life, show)
+
 	g.win.SetTitle(title)
 }
 

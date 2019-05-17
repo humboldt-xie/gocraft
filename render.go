@@ -55,6 +55,68 @@ func loadImage(fname string) (*image.RGBA, image.Rectangle, error) {
 	return rgba, img.Bounds(), nil
 }
 
+type ChunkMesh struct {
+	br      *BlockRender
+	id      Vec3
+	mesh    *Mesh
+	version int64
+	sigch   chan bool
+}
+
+func NewChunkMesh(br *BlockRender, id Vec3) *ChunkMesh {
+	c := game.world.Chunk(id)
+	newMesh := br.makeChunkMesh(c, false)
+	nc := &ChunkMesh{br: br, id: id, version: c.V(), mesh: newMesh, sigch: make(chan bool)}
+	go nc.UpdateLoop()
+	return nc
+}
+
+func (r *ChunkMesh) Close() {
+	close(r.sigch)
+}
+
+func (r *ChunkMesh) DirtyChunk() {
+	r.version -= 1
+	r.checkChunk()
+}
+
+func (r *ChunkMesh) UpdateLoop() {
+	defer func() {
+		mainthread.CallNonBlock(func() {
+			r.mesh.Release()
+		})
+	}()
+	for {
+		_, ok := <-r.sigch
+		if !ok {
+			return
+		}
+		r.updateMesh()
+	}
+}
+func (r *ChunkMesh) checkChunk() {
+	// nonblock signal
+	log.Printf("check chunk %v", r.id)
+	select {
+	case r.sigch <- true:
+	default:
+	}
+}
+
+func (r *ChunkMesh) updateMesh() {
+	c := game.world.Chunk(r.id)
+	if r.version == c.V() {
+		return
+	}
+	newMesh := r.br.makeChunkMesh(c, false)
+	oldMesh := r.mesh
+	r.mesh = newMesh
+	r.version = c.V()
+	mainthread.CallNonBlock(func() {
+		oldMesh.Release()
+	})
+}
+
 type BlockRender struct {
 	shader  *glhf.Shader
 	texture *glhf.Texture
@@ -62,7 +124,7 @@ type BlockRender struct {
 	facePool *sync.Pool
 
 	sigch     chan bool
-	meshcache sync.Map //map[Vec3]*Mesh
+	meshcache sync.Map //map[Vec3]*ChunkMesh
 
 	stat Stat
 	text *Text
@@ -113,16 +175,22 @@ func NewBlockRender() (*BlockRender, error) {
 
 	return r, nil
 }
+func showFaces(id Vec3) [6]bool {
+	return [...]bool{
+		game.world.Block(id.Left()).IsTransparent(),
+		game.world.Block(id.Right()).IsTransparent(),
+		game.world.Block(id.Up()).IsTransparent(),
+		game.world.Block(id.Down()).IsTransparent() && game.world.Block(id.Down()) != nil, //&& id.Y != 0
+		game.world.Block(id.Front()).IsTransparent(),
+		game.world.Block(id.Back()).IsTransparent(),
+	}
+}
 func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
 	//pos := game.camera.Pos()
-	show := [...]bool{
-		game.world.Block(id.Left()).IsTransparent() || w.Life != 100,
-		game.world.Block(id.Right()).IsTransparent() || w.Life != 100,
-		game.world.Block(id.Up()).IsTransparent() || w.Life != 100,
-		game.world.Block(id.Down()).IsTransparent() && game.world.Block(id.Down()) != nil, //&& id.Y != 0
-		game.world.Block(id.Front()).IsTransparent() || w.Life != 100,
-		game.world.Block(id.Back()).IsTransparent() || w.Life != 100,
-	}
+	/*show = [...]bool{
+		true, true, true, true, true, true,
+	}*/
+	show := showFaces(id)
 	vertices = makeData(w, vertices, show, id)
 	return vertices
 }
@@ -139,7 +207,7 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 		facedata = makeBlock(facedata, w, id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
-	log.Printf("chunk faces: %v %d %fs", c.Id(), n/6, float64(time.Since(start))/float64(time.Second), len(facedata))
+	log.Printf("chunk faces: %v %d %fs %d", c.Id(), n/6, float64(time.Since(start))/float64(time.Second), len(facedata))
 	var mesh *Mesh
 	mesh = NewMesh(r.shader, facedata, onmainthread)
 	mesh.Id = c.Id()
@@ -265,6 +333,7 @@ func (r *BlockRender) updateMeshCache() {
 			needed[id] = true
 		}
 	}
+
 	var added, removed []Vec3
 	r.meshcache.Range(func(k, v interface{}) bool {
 		id := k.(Vec3)
@@ -275,94 +344,56 @@ func (r *BlockRender) updateMeshCache() {
 	})
 
 	for id := range needed {
-		mesh, ok := r.meshcache.Load(id)
+		_, ok := r.meshcache.Load(id)
 		// 不在cache里面的需要重新构建
 		if !ok {
 			added = append(added, id)
-		} else {
-			if mesh.(*Mesh).Dirty {
-				log.Printf("update cache %v", id)
-				added = append(added, id)
-				removed = append(removed, id)
-			}
 		}
 	}
 	// 单次并发构造的chunk个数
-	const batchBuildChunk = 4
+	const batchBuildChunk = 16
 	r.sortChunks(added)
 	if len(added) > batchBuildChunk {
 		added = added[:batchBuildChunk]
 	}
 
-	var removedMesh []*Mesh
 	for _, id := range removed {
 		log.Printf("remove cache %v", id)
 		mesh, _ := r.meshcache.Load(id)
 		r.meshcache.Delete(id)
-		removedMesh = append(removedMesh, mesh.(*Mesh))
+		mesh.(*ChunkMesh).Close()
 	}
 
 	start := time.Now()
-	newChunks := game.world.Chunks(added)
+	//newChunks := game.world.Chunks(added)
 	group := sync.WaitGroup{}
-	for _, c := range newChunks {
+	for _, id := range added {
+		game.world.Chunk(id)
 		group.Add(1)
-		go func(c *Chunk) {
+		go func(id Vec3) {
 			defer group.Done()
-			log.Printf("add cache %v", c.Id())
-			r.meshcache.Store(c.Id(), r.makeChunkMesh(c, false))
-		}(c)
+			log.Printf("add cache %v", id)
+			r.meshcache.Store(id, NewChunkMesh(r, id))
+		}(id)
 	}
 	group.Wait()
-	if len(newChunks) > 0 {
-		log.Printf("make chunks spend %fs %d", float64(time.Since(start))/float64(time.Second), len(newChunks))
+	if len(added) > 0 {
+		log.Printf("make chunks spend %fs %d", float64(time.Since(start))/float64(time.Second), len(added))
 	}
 
-	mainthread.CallNonBlock(func() {
-		for _, mesh := range removedMesh {
-			mesh.Release()
-		}
-	})
-
-}
-
-// called on mainthread
-func (r *BlockRender) forceChunks(ids []Vec3) {
-	var removedMesh []*Mesh
-	chunks := game.world.Chunks(ids)
-	for _, chunk := range chunks {
-		id := chunk.Id()
-		imesh, ok := r.meshcache.Load(id)
-		var mesh *Mesh
-		if ok {
-			mesh = imesh.(*Mesh)
-		}
-		if ok && !mesh.Dirty {
-			continue
-		}
-		r.meshcache.Store(id, r.makeChunkMesh(chunk, true))
-		if ok {
-			removedMesh = append(removedMesh, mesh)
-		}
-	}
-	mainthread.CallNonBlock(func() {
-		for _, mesh := range removedMesh {
-			mesh.Release()
-		}
-	})
 }
 
 func (r *BlockRender) forcePlayerChunks() {
 	bid := NearBlock(game.player.Pos())
 	cid := bid.Chunkid()
-	var ids []Vec3
+	//var ids []Vec3
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {
 			id := Vec3{cid.X + dx, 0, cid.Z + dz}
-			ids = append(ids, id)
+			game.world.Chunk(id)
+
 		}
 	}
-	r.forceChunks(ids)
 }
 
 func (r *BlockRender) checkChunks() {
@@ -390,7 +421,7 @@ func (r *BlockRender) DirtyChunk(id Vec3) {
 	if !ok {
 		return
 	}
-	mesh.(*Mesh).Dirty = true
+	mesh.(*ChunkMesh).DirtyChunk()
 }
 
 func (r *BlockRender) UpdateLoop() {
@@ -414,7 +445,8 @@ func (r *BlockRender) drawChunks() {
 	planes := frustumPlanes(&mat)
 	r.stat = Stat{}
 	r.meshcache.Range(func(k, v interface{}) bool {
-		id, mesh := k.(Vec3), v.(*Mesh)
+		id, cmesh := k.(Vec3), v.(*ChunkMesh)
+		mesh := cmesh.mesh
 		r.stat.CacheChunks++
 		if isChunkVisiable(planes, id) {
 			r.stat.RendingChunks++

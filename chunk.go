@@ -29,20 +29,25 @@ func NearBlock(pos mgl32.Vec3) Vec3 {
 }
 
 type Chunk struct {
-	id     Vec3
-	blocks sync.Map // map[Vec3]int
+	id      Vec3
+	version int64
+	blocks  sync.Map // map[Vec3]int
 }
 
 func NewChunk(id Vec3) *Chunk {
 	//log.Printf("new chunk %v", id)
 	c := &Chunk{
-		id: id,
+		id:      id,
+		version: 0,
 	}
 	return c
 }
 
 func (c *Chunk) Id() Vec3 {
 	return c.id
+}
+func (c *Chunk) V() int64 {
+	return c.version
 }
 
 func (c *Chunk) Block(id Vec3) *Block {
@@ -64,6 +69,7 @@ func (c *Chunk) add(id Vec3, w *Block) {
 	if id.Chunkid() != c.id {
 		log.Panicf("id %v chunk %v", id, c.id)
 	}
+	c.version += 1
 	c.blocks.Store(id, w)
 }
 
@@ -71,6 +77,7 @@ func (c *Chunk) del(id Vec3) {
 	if id.Chunkid() != c.id {
 		log.Panicf("id %v chunk %v", id, c.id)
 	}
+	c.version += 1
 	c.blocks.Delete(id)
 }
 

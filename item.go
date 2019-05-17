@@ -62,7 +62,7 @@ func (h *ItemHub) AddTexture(w int, l, r, u, d, f, b int) {
 }
 
 func (h *ItemHub) Texture(w *Block) *BlockTexture {
-	t, ok := h.tex[w.BlockType().TextureID]
+	t, ok := h.tex[w.BlockType().Type]
 	if !ok {
 		log.Printf("%d not found", w)
 		return h.tex[0]
@@ -148,4 +148,5 @@ var itemDesc = map[int][6]int{
 	62: {206, 206, 206, 206, 206, 206},
 	63: {207, 207, 207, 207, 207, 207},
 	64: {226, 224, 241, 209, 227, 225},
+	65: {209, 209, 209, 209, 209, 209},
 }

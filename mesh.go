@@ -12,13 +12,12 @@ type Mesh struct {
 	vao, vbo uint32
 	faces    int
 	Id       Vec3
-	Dirty    bool
 }
 
 func newMesh(shader *glhf.Shader, data []float32) *Mesh {
 	start := time.Now()
 	defer func() {
-		log.Printf("new mesh spend %fs", float64(time.Since(start))/float64(time.Second))
+		log.Printf("new mesh spend %fs %d", float64(time.Since(start))/float64(time.Second), len(data))
 	}()
 	m := new(Mesh)
 	m.faces = len(data) / (shader.VertexFormat().Size() / 4) / 6

@@ -21,9 +21,9 @@ func NewWorld() *World {
 	}
 }
 
-func (w *World) Collide(pos mgl32.Vec3) (mgl32.Vec3, bool) {
-	x, y, z := pos.X(), pos.Y(), pos.Z()
-	nx, ny, nz := round(pos.X()), round(pos.Y()), round(pos.Z())
+func (w *World) Collide(from, to mgl32.Vec3) (mgl32.Vec3, bool) {
+	x, y, z := to.X(), to.Y(), to.Z()
+	nx, ny, nz := round(to.X()), round(to.Y()), round(to.Z())
 	const pad = 0.25
 
 	head := Vec3{int(nx), int(ny), int(nz)}
@@ -31,30 +31,31 @@ func (w *World) Collide(pos mgl32.Vec3) (mgl32.Vec3, bool) {
 
 	stop := false
 	for _, b := range []Vec3{foot, head} {
-		if IsObstacle(w.Block(b.Left())) && x < nx && nx-x > pad {
+		if w.Block(b.Left()).IsObstacle() && x < nx && nx-x > pad {
 			x = nx - pad
 		}
-		if IsObstacle(w.Block(b.Right())) && x > nx && x-nx > pad {
+		if w.Block(b.Right()).IsObstacle() && x > nx && x-nx > pad {
 			x = nx + pad
 		}
-		if IsObstacle(w.Block(b.Down())) && y < ny && ny-y > pad {
+		if w.Block(b.Down()).IsObstacle() && y < ny && ny-y > pad {
 			y = ny - pad
 			stop = true
 		}
-		if IsObstacle(w.Block(b.Up())) && y > ny && y-ny > pad {
+		if w.Block(b.Up()).IsObstacle() && y > ny && y-ny > pad {
 			y = ny + pad
 			stop = true
 		}
-		if IsObstacle(w.Block(b.Back())) && z < nz && nz-z > pad {
+		if w.Block(b.Back()).IsObstacle() && z < nz && nz-z > pad {
 			z = nz - pad
 		}
-		if IsObstacle(w.Block(b.Front())) && z > nz && z-nz > pad {
+		if w.Block(b.Front()).IsObstacle() && z > nz && z-nz > pad {
 			z = nz + pad
 		}
 	}
 	return mgl32.Vec3{x, y, z}, stop
 }
 
+//HitTest pos 当前位置, vec 方向
 func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 	var (
 		maxLen = float32(8.0)
@@ -64,8 +65,8 @@ func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 		pprev       *Vec3
 	)
 
-	for len := float32(0); len < maxLen; len += step {
-		block = NearBlock(pos.Add(vec.Mul(len)))
+	for length := float32(0); length < maxLen; length += step {
+		block = NearBlock(pos.Add(vec.Mul(length)))
 		if prev != block && w.HasBlock(block) {
 			return &block, pprev
 		}
@@ -82,7 +83,6 @@ func (w *World) Block(id Vec3) *Block {
 	}
 	block := chunk.Block(id)
 	return block
-
 }
 
 func (w *World) BlockChunk(block Vec3) *Chunk {
@@ -168,11 +168,6 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		chunk.add(block, tp)
 	}
 	err := store.RangeBlocks(id, func(bid Vec3, w *Block) {
-		/*if w == 0 {
-			//chunk.del(bid)
-			chunk.add(bid, w)
-			return
-		}*/
 		chunk.add(bid, w)
 	})
 	if err != nil {
@@ -180,10 +175,6 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		return nil
 	}
 	ClientFetchChunk(id, func(bid Vec3, w *Block) {
-		/*if w == 0 {
-			//chunk.del(bid)
-			return
-		}*/
 		chunk.add(bid, w)
 		store.UpdateBlock(bid, w)
 	})

@@ -9,12 +9,12 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
-type PlayerMovement int
+type Movement int
 
 var PlayerID = int32(1)
 
 const (
-	MoveForward PlayerMovement = iota
+	MoveForward Movement = iota
 	MoveBackward
 	MoveLeft
 	MoveRight
@@ -24,6 +24,15 @@ type Position struct {
 	mgl32.Vec3
 	Rx, Ry float32
 	T      float64
+}
+
+func (p *Position) Front() mgl32.Vec3 {
+	front := mgl32.Vec3{
+		cos(radian(p.Ry)) * cos(radian(p.Rx)),
+		sin(radian(p.Ry)),
+		cos(radian(p.Ry)) * sin(radian(p.Rx)),
+	}
+	return front.Normalize()
 }
 
 type Player struct {
@@ -54,7 +63,7 @@ func (c *Player) Jump(delta float32) {
 	}
 }
 
-func (c *Player) Move(dir PlayerMovement, delta float32) {
+func (c *Player) Move(dir Movement, delta float32) {
 	if c.flying {
 		delta = 5 * delta
 	}
@@ -114,6 +123,16 @@ func NewPlayer(pos mgl32.Vec3, ai AI, phy Physics) *Player {
 
 func (c *Player) Matrix() mgl32.Mat4 {
 	return mgl32.LookAtV(c.Position.Vec3, c.Position.Add(c.Front()), c.Up())
+}
+
+// 线性插值计算玩家位置
+func (p *Player) computeFootMat() mgl32.Mat4 {
+	body_pos := p.Position
+	front := p.WalkFront()
+	right := p.Right()
+	up := right.Cross(front).Normalize()
+	pos := mgl32.Vec3{body_pos.X(), body_pos.Y() - 1, body_pos.Z()}
+	return mgl32.LookAtV(pos, pos.Add(front), up).Inv()
 }
 
 // 线性插值计算玩家位置
@@ -188,7 +207,8 @@ type PlayerRender struct {
 	shader  *glhf.Shader
 	texture *glhf.Texture
 	//players map[int32]*Player
-	mesh *Mesh
+	mesh     *Mesh
+	meshFoot *Mesh
 }
 
 func NewPlayerRender() (*PlayerRender, error) {
@@ -219,6 +239,8 @@ func NewPlayerRender() (*PlayerRender, error) {
 
 		cubeData := makeCubeData([]float32{}, NewBlock(64), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
 		r.mesh = NewMesh(r.shader, cubeData, true)
+		cubeDataFoot := makeCubeData([]float32{}, NewBlock(65), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
+		r.meshFoot = NewMesh(r.shader, cubeDataFoot, true)
 
 	})
 	if err != nil {
@@ -245,7 +267,8 @@ func (r *PlayerRender) UpdateOrAdd(id int32, s PlayerState, ismainthread bool) {
 	mp, ok := game.players.Load(id)
 	if !ok {
 		log.Printf("add new player %d", id)
-		p = NewPlayer(pos.Vec3, nil, &SimplePhysics{})
+		f := pos.Front()
+		p = NewPlayer(pos.Vec3, &CircleAI{}, &SimplePhysics{vx: f.X() * 50, vz: f.Z() * 50, vy: f.Y() * 50})
 		r.Add(id, p)
 	} else {
 		p = mp.(*Player)
@@ -266,6 +289,7 @@ func (r *PlayerRender) Remove(id int32) {
 }
 
 type CircleAI struct {
+	g *Game
 }
 
 func (c *CircleAI) Think(p *Player) {
@@ -273,6 +297,7 @@ func (c *CircleAI) Think(p *Player) {
 	p.ChangeAngle(1, 0)
 	//if prev == nil {
 	p.Move(MoveForward, 0.1)
+	game.BreakBlock(p)
 	//}
 }
 
@@ -287,6 +312,7 @@ func (sp *SimplePhysics) Speed(a mgl32.Vec3) {
 }
 
 func (sp *SimplePhysics) Update(p *Player, dt float64) {
+	from := p.Pos()
 	pos := p.Pos()
 	stop := false
 	if !p.Flying() {
@@ -294,11 +320,17 @@ func (sp *SimplePhysics) Update(p *Player, dt float64) {
 		if sp.vy < -50 {
 			sp.vy = -50
 		}
-		pos = mgl32.Vec3{pos.X(), pos.Y() + sp.vy*float32(dt), pos.Z()}
+		pos = mgl32.Vec3{
+			from.X() + sp.vx*float32(dt),
+			from.Y() + sp.vy*float32(dt),
+			from.Z() + sp.vz*float32(dt),
+		}
 	}
 
-	pos, stop = game.world.Collide(pos)
+	pos, stop = game.world.Collide(from, pos)
 	if stop {
+		sp.vx = 0
+		sp.vz = 0
 		if sp.vy > -5 {
 			sp.vy = 0
 		} else if sp.vy < -5 {
@@ -309,10 +341,12 @@ func (sp *SimplePhysics) Update(p *Player, dt float64) {
 }
 
 func (r *PlayerRender) DrawPlayer(p *Player, mat mgl32.Mat4) {
-	mat = mat.Mul4(p.computeMat())
-
-	r.shader.SetUniformAttr(0, mat)
+	mat2 := mat.Mul4(p.computeMat())
+	r.shader.SetUniformAttr(0, mat2)
 	r.mesh.Draw()
+	mat1 := mat.Mul4(p.computeFootMat())
+	r.shader.SetUniformAttr(0, mat1)
+	r.meshFoot.Draw()
 }
 func (r *PlayerRender) Update(dt float64) {
 	game.players.Range(func(k, v interface{}) bool {

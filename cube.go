@@ -16,8 +16,9 @@ func makeCubeData(vertices []float32, w *Block, show [6]bool, block Vec3) []floa
 	u, d := texture.Up, texture.Down
 	f, b := texture.Front, texture.Back
 	x, y, z := float32(block.X), float32(block.Y), float32(block.Z)
-	cubeHeight := float32(0.5)                           //float32(0.5 * (float32(w.Life) - 50) / 50)
-	cubeWeight := float32(0.5 * (float32(w.Life) / 100)) //1.0 / 2
+	cubeHeight := float32(0.5) //float32(0.5 * (float32(w.Life) - 50) / 50)
+	//cubeWeight := float32(0.5 * (float32(w.Life) / 100)) //1.0 / 2
+	cubeWeight := float32(0.5) //1.0 / 2
 
 	if show[sleft] {
 		vertices = append(vertices, []float32{
@@ -206,6 +207,7 @@ func makePlantData(vertices []float32, w *Block, show [6]bool, block Vec3) []flo
 	cubeWeight := float32(0.5)
 	vertices = append(vertices, []float32{
 		// left
+		// x y z tex-x tex-y
 		x, y - 0.5, z - cubeWeight, l[0][0], l[0][1], -1, 0, 0,
 		x, y - 0.5, z + cubeWeight, l[1][0], l[1][1], -1, 0, 0,
 		x, y + cubeHeight, z + cubeWeight, l[2][0], l[2][1], -1, 0, 0,
@@ -246,13 +248,12 @@ func makePlantData(vertices []float32, w *Block, show [6]bool, block Vec3) []flo
 }
 
 func makeData(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
-	if w.BlockType().DrawType == DTAir {
+	switch w.BlockType().DrawType {
+	case DTAir:
 		return vertices
+	case DTPlant:
+		return makePlantData(vertices, w, show, block)
+	default:
+		return makeCubeData(vertices, w, show, block)
 	}
-	if IsPlant(w) {
-		vertices = makePlantData(vertices, w, show, block)
-	} else {
-		vertices = makeCubeData(vertices, w, show, block)
-	}
-	return vertices
 }
