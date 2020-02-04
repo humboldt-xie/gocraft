@@ -1,4 +1,4 @@
-package main
+package world
 
 import (
 	"flag"
@@ -227,9 +227,9 @@ func ClientUpdatePlayerState(state Position) {
 		log.Panic(err)
 	}
 
-	for id, player := range rep.Players {
+	/*for id, player := range rep.Players {
 		game.playerRender.UpdateOrAdd(id, player, false)
-	}
+	}*/
 }
 
 type StatusService struct {
@@ -264,10 +264,10 @@ func (s *BlockService) FetchChunk(req *FetchChunkRequest, rep *FetchChunkRespons
 }
 func (s *BlockService) UpdateBlock(req *UpdateBlockRequest, rep *UpdateBlockResponse) error {
 	log.Printf("rpc::UpdateBlock:%v", *req)
-	bid := Vec3{req.X, req.Y, req.Z}
-	//game.UpdateBlock(bid, NewBlock(req.W))
-	game.world.UpdateBlock(bid, req.Block)
-	game.blockRender.DirtyBlock(bid)
+	//bid := Vec3{req.X, req.Y, req.Z}
+
+	//game.world.UpdateBlock(bid, req.Block)
+	//game.blockRender.DirtyBlock(bid)
 	return nil
 }
 
@@ -275,7 +275,7 @@ type PlayerService struct {
 }
 
 func (s *PlayerService) UpdateState(req *UpdateStateRequest, rep *UpdateStateResponse) error {
-	game.playerRender.UpdateOrAdd(req.Id, req.State, false)
+	/*game.playerRender.UpdateOrAdd(req.Id, req.State, false)
 	rep.Players = make(map[int32]PlayerState)
 	game.players.Range(func(k, v interface{}) bool {
 		id := k.(int32)
@@ -286,12 +286,12 @@ func (s *PlayerService) UpdateState(req *UpdateStateRequest, rep *UpdateStateRes
 		state := PlayerState{X: p.X(), Y: p.Y(), Z: p.Z(), Rx: p.Rx, Ry: p.Ry}
 		rep.Players[id] = state
 		return true
-	})
+	})*/
 
 	return nil
 }
 
 func (s *PlayerService) RemovePlayer(req *RemovePlayerRequest, rep *RemovePlayerResponse) error {
-	game.playerRender.Remove(req.Id)
+	//game.playerRender.Remove(req.Id)
 	return nil
 }

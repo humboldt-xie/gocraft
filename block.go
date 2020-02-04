@@ -1,79 +1,23 @@
 package main
 
-var (
-	typeGrassBlock = 1
-	typeSandBlock  = 2
-	typeGrass      = 17
-	typeLeaves     = 15
-	typeWood       = 5
-	typeCloud      = 16
-	typeAir        = 0
+import (
+	"github.com/humboldt-xie/tinycraft/world"
 )
 
-type DrawType int
-
 const (
-	_ DrawType = iota
+	_ world.DrawType = iota
 	DTAir
 	DTBlock
 	DTPlant
 	DTMan
 )
 
-type BlockType struct {
-	Type          int
-	DrawType      DrawType
-	IsTransparent bool
-	IsObstacle    bool
-}
-
-func (t *BlockType) Data(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
-
-	return nil
-}
-
-type Block struct {
-	Type int
-	Life int
-}
-
-func (b *Block) New() *Block {
-	return NewBlock(b.Type)
-}
-
-func NewBlock(t int) *Block {
-	block := &Block{Type: t, Life: 100}
-	return block
-}
-
-func (b *Block) BlockType() *BlockType {
-	return idToType[b.Type]
-}
-
-// 是否透明 返回true 则不绘制
-func (b *Block) IsTransparent() bool {
-	if b == nil {
-		return true
-	}
-	if b.Life < 100 {
-		return true
-	}
-	return b.BlockType().IsTransparent
-}
-
-// 是否可穿越
-func (tp *Block) IsObstacle() bool {
-	if tp == nil {
-		return false
-	}
-	return tp.BlockType().IsObstacle
-}
-
-var idToType = map[int]*BlockType{}
+type BlockType = world.BlockType
+type Block = world.Block
 
 func init() {
 	for i, _ := range Blocks {
-		idToType[Blocks[i].Type] = &Blocks[i]
+		world.RegisterBlockType(Blocks[i].Type, &Blocks[i])
 	}
 }
 

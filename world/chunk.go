@@ -1,4 +1,4 @@
-package main
+package world
 
 import (
 	"log"
@@ -31,6 +31,8 @@ func NearBlock(pos mgl32.Vec3) Vec3 {
 type Chunk struct {
 	id      Vec3
 	version int64
+	maxY    int
+	minY    int
 	blocks  sync.Map // map[Vec3]int
 }
 
@@ -39,6 +41,8 @@ func NewChunk(id Vec3) *Chunk {
 	c := &Chunk{
 		id:      id,
 		version: 0,
+		maxY:    0,
+		minY:    0,
 	}
 	return c
 }
@@ -59,7 +63,7 @@ func (c *Chunk) Block(id Vec3) *Block {
 		return w.(*Block)
 	}
 	if id.Y >= 12 {
-		return NewBlock(typeAir)
+		return NewBlock(TypeAir)
 	}
 	//c.add(id, 1)
 	return nil
@@ -68,6 +72,12 @@ func (c *Chunk) Block(id Vec3) *Block {
 func (c *Chunk) add(id Vec3, w *Block) {
 	if id.Chunkid() != c.id {
 		log.Panicf("id %v chunk %v", id, c.id)
+	}
+	if id.Y > c.maxY {
+		c.maxY = id.Y
+	}
+	if id.Y < c.minY {
+		c.minY = id.Y
 	}
 	c.version += 1
 	c.blocks.Store(id, w)

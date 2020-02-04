@@ -1,11 +1,7 @@
-package main
+package world
 
 import (
-	"log"
-
-	"github.com/faiface/glhf"
-	"github.com/faiface/mainthread"
-	"github.com/go-gl/glfw/v3.2/glfw"
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -19,6 +15,15 @@ const (
 	MoveLeft
 	MoveRight
 )
+
+type AI interface {
+	Think(p *Player)
+}
+
+type Physics interface {
+	Speed(a mgl32.Vec3)
+	Update(p *Player, dt float64)
+}
 
 type Position struct {
 	mgl32.Vec3
@@ -56,12 +61,12 @@ func (c *Player) State() Position {
 	return c.Position
 }
 
-func (c *Player) Jump(delta float32) {
+/*func (c *Player) Jump(delta float32) {
 	block := game.CurrentBlockid()
 	if game.world.HasBlock(Vec3{block.X, block.Y - 2, block.Z}) {
 		c.physics.Speed(mgl32.Vec3{0, delta, 0})
 	}
-}
+}*/
 
 func (c *Player) Move(dir Movement, delta float32) {
 	if c.flying {
@@ -126,7 +131,7 @@ func (c *Player) Matrix() mgl32.Mat4 {
 }
 
 // 线性插值计算玩家位置
-func (p *Player) computeFootMat() mgl32.Mat4 {
+func (p *Player) ComputeFootMat() mgl32.Mat4 {
 	body_pos := p.Position
 	front := p.WalkFront()
 	right := p.Right()
@@ -136,7 +141,7 @@ func (p *Player) computeFootMat() mgl32.Mat4 {
 }
 
 // 线性插值计算玩家位置
-func (p *Player) computeMat() mgl32.Mat4 {
+func (p *Player) ComputeMat() mgl32.Mat4 {
 	t1 := p.Position.T - p.pre.T
 	t2 := glfw.GetTime() - p.Position.T
 	t := min(float32(t2/t1), 1)
@@ -201,175 +206,4 @@ func (c *Player) FlipFlying() {
 
 func (c *Player) Flying() bool {
 	return c.flying
-}
-
-type PlayerRender struct {
-	shader  *glhf.Shader
-	texture *glhf.Texture
-	//players map[int32]*Player
-	mesh     *Mesh
-	meshFoot *Mesh
-}
-
-func NewPlayerRender() (*PlayerRender, error) {
-	var (
-		err error
-	)
-	img, rect, err := loadImage(*texturePath)
-	if err != nil {
-		return nil, err
-	}
-
-	r := &PlayerRender{
-		//players: make(map[int32]*Player),
-	}
-	mainthread.Call(func() {
-		r.shader, err = glhf.NewShader(glhf.AttrFormat{
-			glhf.Attr{Name: "pos", Type: glhf.Vec3},
-			glhf.Attr{Name: "tex", Type: glhf.Vec2},
-			glhf.Attr{Name: "normal", Type: glhf.Vec3},
-		}, glhf.AttrFormat{
-			glhf.Attr{Name: "matrix", Type: glhf.Mat4},
-		}, playerVertexSource, playerFragmentSource)
-
-		if err != nil {
-			return
-		}
-		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img.Pix)
-
-		cubeData := makeCubeData([]float32{}, NewBlock(64), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
-		r.mesh = NewMesh(r.shader, cubeData, true)
-		cubeDataFoot := makeCubeData([]float32{}, NewBlock(65), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
-		r.meshFoot = NewMesh(r.shader, cubeDataFoot, true)
-
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return r, nil
-}
-func (r *PlayerRender) Add(id int32, p *Player) {
-	//r.players[id] = p
-	log.Printf("%v\n", game)
-	game.players.Store(id, p)
-}
-
-func (r *PlayerRender) UpdateOrAdd(id int32, s PlayerState, ismainthread bool) {
-	pos := Position{
-		Vec3: mgl32.Vec3{s.X, s.Y, s.Z},
-		Rx:   s.Rx,
-		Ry:   s.Ry,
-		T:    glfw.GetTime(),
-	}
-	var p *Player
-
-	mp, ok := game.players.Load(id)
-	if !ok {
-		log.Printf("add new player %d", id)
-		f := pos.Front()
-		p = NewPlayer(pos.Vec3, &CircleAI{}, &SimplePhysics{vx: f.X() * 50, vz: f.Z() * 50, vy: f.Y() * 50})
-		r.Add(id, p)
-	} else {
-		p = mp.(*Player)
-	}
-	p.UpdateState(pos)
-}
-
-func (r *PlayerRender) Remove(id int32) {
-	log.Printf("remove player %d", id)
-	/*p, ok := r.players[id]
-	if ok {
-		mainthread.CallNonBlock(func() {
-			p.Release()
-		})
-	}*/
-	game.players.Delete(id)
-
-}
-
-type CircleAI struct {
-	g *Game
-}
-
-func (c *CircleAI) Think(p *Player) {
-	//_, prev := game.world.HitTest(p.Pos(), p.Front())
-	p.ChangeAngle(1, 0)
-	//if prev == nil {
-	p.Move(MoveForward, 0.1)
-	game.BreakBlock(p)
-	//}
-}
-
-type SimplePhysics struct {
-	vx, vz, vy float32
-}
-
-func (sp *SimplePhysics) Speed(a mgl32.Vec3) {
-	sp.vx = a.X()
-	sp.vy = a.Y()
-	sp.vz = a.Z()
-}
-
-func (sp *SimplePhysics) Update(p *Player, dt float64) {
-	from := p.Pos()
-	pos := p.Pos()
-	stop := false
-	if !p.Flying() {
-		sp.vy -= float32(dt * 20)
-		if sp.vy < -50 {
-			sp.vy = -50
-		}
-		pos = mgl32.Vec3{
-			from.X() + sp.vx*float32(dt),
-			from.Y() + sp.vy*float32(dt),
-			from.Z() + sp.vz*float32(dt),
-		}
-	}
-
-	pos, stop = game.world.Collide(from, pos)
-	if stop {
-		sp.vx = 0
-		sp.vz = 0
-		if sp.vy > -5 {
-			sp.vy = 0
-		} else if sp.vy < -5 {
-			sp.vy = -sp.vy * 0.1
-		}
-	}
-	p.SetPos(pos)
-}
-
-func (r *PlayerRender) DrawPlayer(p *Player, mat mgl32.Mat4) {
-	mat2 := mat.Mul4(p.computeMat())
-	r.shader.SetUniformAttr(0, mat2)
-	r.mesh.Draw()
-	mat1 := mat.Mul4(p.computeFootMat())
-	r.shader.SetUniformAttr(0, mat1)
-	r.meshFoot.Draw()
-}
-func (r *PlayerRender) Update(dt float64) {
-	game.players.Range(func(k, v interface{}) bool {
-		p := v.(*Player)
-		if p.ai != nil {
-			p.ai.Think(p)
-		}
-		if p.physics != nil {
-			p.physics.Update(p, dt)
-		}
-		return true
-	})
-}
-
-func (r *PlayerRender) Draw() {
-	mat := game.blockRender.get3dmat()
-	r.shader.Begin()
-	r.texture.Begin()
-	game.players.Range(func(k, v interface{}) bool {
-		p := v.(*Player)
-		r.DrawPlayer(p, mat)
-		return true
-	})
-	r.texture.End()
-	r.shader.End()
 }

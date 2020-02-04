@@ -1,4 +1,4 @@
-package main
+package world
 
 import (
 	"log"
@@ -13,8 +13,8 @@ type World struct {
 	chunks *lru.Cache // map[Vec3]*Chunk
 }
 
-func NewWorld() *World {
-	m := (*renderRadius) * (*renderRadius) * 4
+func NewWorld(renderRadius int) *World {
+	m := (renderRadius) * (renderRadius) * 4
 	chunks, _ := lru.New(m)
 	return &World{
 		chunks: chunks,
@@ -76,6 +76,20 @@ func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 	return nil, nil
 }
 
+func (w *World) IsTransparent(id Vec3) bool {
+	chunk := w.BlockChunk(id)
+	if chunk == nil {
+		return true
+	}
+	block := chunk.Block(id)
+	if block == nil {
+		if id.Y < chunk.minY {
+			return false
+		}
+	}
+	return block.IsTransparent()
+}
+
 func (w *World) Block(id Vec3) *Block {
 	chunk := w.BlockChunk(id)
 	if chunk == nil {
@@ -122,7 +136,7 @@ func (w *World) Generate(id Vec3) {
 					if y == minY || y == maxY || x == minX || x == maxX || z == minZ || z == maxZ {
 						nw = typeGrassBlock
 					} else {
-						nw = typeAir
+						nw = TypeAir
 					}
 					w.CreateBlock(Vec3{x, y, z}, NewBlock(nw))
 				}
@@ -267,6 +281,9 @@ func makeChunkMap(cid Vec3) map[Vec3]*Block {
 }
 
 func (w *World) loadChunk(id Vec3) (*Chunk, bool) {
+	if w.chunks == nil {
+		panic("chunks is nil")
+	}
 	chunk, ok := w.chunks.Get(id)
 	if !ok {
 		return nil, false

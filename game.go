@@ -3,38 +3,82 @@ package main
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	_ "image/png"
 
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/gl/v3.3-core/gl"
-	"github.com/go-gl/glfw/v3.2/glfw"
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/humboldt-xie/tinycraft/render"
+	"github.com/humboldt-xie/tinycraft/world"
 )
 
-type AI interface {
-	Think(p *Player)
+type CircleAI struct {
+	g *Game
 }
 
-type Physics interface {
-	Speed(a mgl32.Vec3)
-	Update(p *Player, dt float64)
+func (c *CircleAI) Think(p *world.Player) {
+	//_, prev := game.world.HitTest(p.Pos(), p.Front())
+	p.ChangeAngle(1, 0)
+	//if prev == nil {
+	p.Move(world.MoveForward, 0.1)
+	game.BreakBlock(p)
+	//}
+}
+
+type SimplePhysics struct {
+	vx, vz, vy float32
+}
+
+func (sp *SimplePhysics) Speed(a mgl32.Vec3) {
+	sp.vx = a.X()
+	sp.vy = a.Y()
+	sp.vz = a.Z()
+}
+
+func (sp *SimplePhysics) Update(p *world.Player, dt float64) {
+	from := p.Pos()
+	pos := p.Pos()
+	stop := false
+	if !p.Flying() {
+		sp.vy -= float32(dt * 20)
+		if sp.vy < -50 {
+			sp.vy = -50
+		}
+		pos = mgl32.Vec3{
+			from.X() + sp.vx*float32(dt),
+			from.Y() + sp.vy*float32(dt),
+			from.Z() + sp.vz*float32(dt),
+		}
+	}
+
+	pos, stop = game.world.Collide(from, pos)
+	if stop {
+		sp.vx = 0
+		sp.vz = 0
+		if sp.vy > -5 {
+			sp.vy = 0
+		} else if sp.vy < -5 {
+			sp.vy = -sp.vy * 0.1
+		}
+	}
+	p.SetPos(pos)
 }
 
 type Game struct {
 	win *glfw.Window
 
 	players  sync.Map
-	player   *Player
+	player   *world.Player
 	lx, ly   float64
 	prevtime float64
 
-	blockRender  *BlockRender
-	lineRender   *LineRender
-	playerRender *PlayerRender
+	blockRender  *render.BlockRender
+	lineRender   *render.LineRender
+	playerRender *render.PlayerRender
 
-	world   *World
+	world   *world.World
 	itemidx int
 	item    *BlockType
 	fps     FPS
@@ -59,33 +103,33 @@ func NewGame(w, h int) (*Game, error) {
 		win.SetKeyCallback(game.onKeyCallback)
 		game.win = win
 	})
-	game.world = NewWorld()
-	game.blockRender, err = NewBlockRender()
+	game.world = world.NewWorld(*render.RenderRadius)
+	game.blockRender, err = render.NewBlockRender(game.win, game.world)
 	if err != nil {
 		return nil, err
 	}
 	mainthread.Call(func() {
 		game.blockRender.UpdateItem(game.item)
 	})
-	game.lineRender, err = NewLineRender()
+	game.lineRender, err = render.NewLineRender(game.win, game.world)
 	if err != nil {
 		return nil, err
 	}
-	game.playerRender, err = NewPlayerRender()
+	game.playerRender, err = render.NewPlayerRender()
 	if err != nil {
 		return nil, err
 	}
 
-	game.player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
+	game.player = world.NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
 	//game.playerRender.Add(0, game.player)
-	if client == nil {
-		game.players.Store(int32(0), game.player)
-	} else {
+	//if client == nil {
+	game.players.Store(int32(0), game.player)
+	/*} else {
 		game.players.Store(int32(client.ClientID), game.player)
 
-	}
+	}*/
 
-	go game.blockRender.UpdateLoop()
+	go game.blockRender.UpdateLoop(game.player)
 	go game.syncPlayerLoop()
 	return game, nil
 }
@@ -98,22 +142,22 @@ func (g *Game) setExclusiveMouse(exclusive bool) {
 	}
 	g.exclusiveMouse = exclusive
 }
-func (g *Game) UpdateBlock(id Vec3, tp *Block) {
+func (g *Game) UpdateBlock(id world.Vec3, tp *world.Block) {
 	g.world.UpdateBlock(id, tp)
 	g.blockRender.DirtyBlock(id)
-	go ClientUpdateBlock(id, tp)
+	//go ClientUpdateBlock(id, tp)
 }
 
-func (g *Game) PutBlock(player *Player, item *BlockType) {
+func (g *Game) PutBlock(player *world.Player, item *BlockType) {
 	head := player.Head()
 	foot := player.Foot()
 	_, prev := g.world.HitTest(player.Pos(), player.Front())
 	if prev != nil && *prev != head && *prev != foot {
-		g.UpdateBlock(*prev, NewBlock(item.Type))
+		g.UpdateBlock(*prev, world.NewBlock(item.Type))
 	}
 
 }
-func (g *Game) BreakBlock(player *Player) {
+func (g *Game) BreakBlock(player *world.Player) {
 	block, _ := g.world.HitTest(player.Pos(), player.Front())
 	if block != nil {
 		tblock := g.world.Block(*block)
@@ -121,7 +165,7 @@ func (g *Game) BreakBlock(player *Player) {
 			tblock.Life -= 40
 		}
 		if tblock == nil || tblock.Life <= 0 {
-			tblock = NewBlock(typeAir)
+			tblock = world.NewBlock(world.TypeAir)
 		}
 		g.UpdateBlock(*block, tblock)
 	}
@@ -166,9 +210,9 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 	case glfw.KeyTab:
 		g.player.FlipFlying()
 	case glfw.KeySpace:
-		g.player.Jump(8)
+		//g.player.Jump(8)
 	case glfw.KeyN:
-		for i := 0; i < 1; i++ {
+		/*for i := 0; i < 1; i++ {
 			pos := g.player.Pos()
 			front := g.player.Front()
 			PlayerID += 1
@@ -179,7 +223,7 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 				Rx: g.player.State().Rx,
 				Ry: g.player.State().Ry,
 			}, true)
-		}
+		}*/
 	case glfw.KeyE:
 		g.itemidx = (1 + g.itemidx) % len(Blocks)
 		g.item = &Blocks[g.itemidx]
@@ -196,29 +240,29 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 
 func (g *Game) handleKeyInput(dt float64) {
 	speed := float32(0.1)
-	if g.player.flying {
+	if g.player.Flying() {
 		speed = 0.1
 	}
 	if g.win.GetKey(glfw.KeyEscape) == glfw.Press {
 		g.setExclusiveMouse(false)
 	}
 	if g.win.GetKey(glfw.KeyW) == glfw.Press {
-		g.player.Move(MoveForward, speed)
+		g.player.Move(world.MoveForward, speed)
 	}
 	if g.win.GetKey(glfw.KeyS) == glfw.Press {
-		g.player.Move(MoveBackward, speed)
+		g.player.Move(world.MoveBackward, speed)
 	}
 	if g.win.GetKey(glfw.KeyA) == glfw.Press {
-		g.player.Move(MoveLeft, speed)
+		g.player.Move(world.MoveLeft, speed)
 	}
 	if g.win.GetKey(glfw.KeyD) == glfw.Press {
-		g.player.Move(MoveRight, speed)
+		g.player.Move(world.MoveRight, speed)
 	}
 }
 
-func (g *Game) CurrentBlockid() Vec3 {
+func (g *Game) CurrentBlockid() world.Vec3 {
 	pos := g.player.Pos()
-	return NearBlock(pos)
+	return world.NearBlock(pos)
 }
 
 func (g *Game) ShouldClose() bool {
@@ -228,7 +272,7 @@ func (g *Game) ShouldClose() bool {
 func (g *Game) renderStat() {
 	g.fps.Update()
 	p := g.player.Pos()
-	cid := NearBlock(p).Chunkid()
+	cid := world.NearBlock(p).Chunkid()
 	blockPos, _ := g.world.HitTest(g.player.Pos(), g.player.Front())
 	c := g.world.Chunk(cid)
 
@@ -239,7 +283,7 @@ func (g *Game) renderStat() {
 		if block != nil {
 			life = block.Life
 		}
-		show = showFaces(*blockPos)
+		show = render.ShowFaces(g.world, *blockPos)
 	}
 	stat := g.blockRender.Stat()
 	title := fmt.Sprintf("[%.2f %.2f %.2f] %v(v:%d) [%d/%d %d] %d %d/100 %v", p.X(), p.Y(), p.Z(),
@@ -249,21 +293,13 @@ func (g *Game) renderStat() {
 }
 
 func (g *Game) syncPlayerLoop() {
-	tick := time.NewTicker(time.Second / 10)
+	/*tick := time.NewTicker(time.Second / 10)
 	for range tick.C {
 		ClientUpdatePlayerState(g.player.State())
-	}
+	}*/
 }
 
 func (g *Game) Update() {
-	/*pos := g.player.Pos()
-	g.playerRender.UpdateOrAdd(1, proto.PlayerState{
-		X:  pos.X() + 1.0,
-		Y:  pos.Y(),
-		Z:  pos.Z() + 1.0,
-		Rx: 5,
-		Ry: 0,
-	})*/
 	mainthread.Call(func() {
 		var dt float64
 		now := glfw.GetTime()
@@ -275,14 +311,14 @@ func (g *Game) Update() {
 
 		g.handleKeyInput(dt)
 
-		g.playerRender.Update(dt)
+		//g.playerRender.Update(dt)
 
 		gl.ClearColor(0.57, 0.71, 0.77, 1)
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		g.blockRender.Draw()
-		g.lineRender.Draw()
-		g.playerRender.Draw()
+		g.blockRender.Draw(g.player)
+		g.lineRender.Draw(g.player)
+		//g.playerRender.Draw(g.players)
 		g.renderStat()
 
 		g.win.SwapBuffers()

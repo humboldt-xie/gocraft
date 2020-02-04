@@ -12,7 +12,9 @@ import (
 
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/gl/v3.3-core/gl"
-	"github.com/go-gl/glfw/v3.2/glfw"
+	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/humboldt-xie/tinycraft/render"
+	"github.com/humboldt-xie/tinycraft/world"
 	//"github.com/icexin/gocraft-server/proto"
 )
 
@@ -73,18 +75,18 @@ func (f *FPS) Fps() int {
 }
 
 func run() {
-	err := LoadTextureDesc()
+	err := render.LoadTextureDesc()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = InitBoltStore()
+	err = world.InitBoltStore()
 	if err != nil {
 		log.Panic(err)
 	}
-	defer store.Close()
+	defer world.CloseStore()
 
-	if *listenAddr != "" {
+	/*if *listenAddr != "" {
 		err := InitService()
 		if err != nil {
 			log.Fatal(err)
@@ -97,26 +99,26 @@ func run() {
 		if client != nil {
 			defer client.Close()
 		}
-	}
+	}*/
 
 	game, err = NewGame(800, 600)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	game.player = store.GetPlayer()
+	/*game.player = store.GetPlayer()
 	if client == nil {
 		game.playerRender.Add(0, game.player)
 	} else {
 		game.playerRender.Add(client.ClientID, game.player)
-	}
+	}*/
 
 	tick := time.Tick(time.Second / 60)
 	for !game.ShouldClose() {
 		<-tick
 		game.Update()
 	}
-	store.UpdatePlayer(game.player)
+	//store.UpdatePlayer(game.player)
 }
 
 func main() {

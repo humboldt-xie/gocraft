@@ -1,4 +1,11 @@
-package main
+package render
+
+import (
+	"github.com/humboldt-xie/tinycraft/world"
+)
+
+type Block = world.Block
+type Vec3 = world.Vec3
 
 const (
 	sleft = iota
@@ -249,9 +256,9 @@ func makePlantData(vertices []float32, w *Block, show [6]bool, block Vec3) []flo
 
 func makeData(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
 	switch w.BlockType().DrawType {
-	case DTAir:
+	case world.DTAir:
 		return vertices
-	case DTPlant:
+	case world.DTPlant:
 		return makePlantData(vertices, w, show, block)
 	default:
 		return makeCubeData(vertices, w, show, block)

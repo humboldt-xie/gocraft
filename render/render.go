@@ -1,4 +1,4 @@
-package main
+package render
 
 import (
 	"flag"
@@ -17,12 +17,14 @@ import (
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/gl/v3.3-core/gl"
+	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/humboldt-xie/tinycraft/world"
 )
 
 var (
 	texturePath  = flag.String("t", "texture.png", "texture file")
-	renderRadius = flag.Int("r", 6, "render radius")
+	RenderRadius = flag.Int("r", 6, "render radius")
 )
 
 func loadImage(fname string) (*image.RGBA, image.Rectangle, error) {
@@ -55,69 +57,9 @@ func loadImage(fname string) (*image.RGBA, image.Rectangle, error) {
 	return rgba, img.Bounds(), nil
 }
 
-type ChunkMesh struct {
-	br      *BlockRender
-	id      Vec3
-	mesh    *Mesh
-	version int64
-	sigch   chan bool
-}
-
-func NewChunkMesh(br *BlockRender, id Vec3) *ChunkMesh {
-	c := game.world.Chunk(id)
-	newMesh := br.makeChunkMesh(c, false)
-	nc := &ChunkMesh{br: br, id: id, version: c.V(), mesh: newMesh, sigch: make(chan bool)}
-	go nc.UpdateLoop()
-	return nc
-}
-
-func (r *ChunkMesh) Close() {
-	close(r.sigch)
-}
-
-func (r *ChunkMesh) DirtyChunk() {
-	r.version -= 1
-	r.checkChunk()
-}
-
-func (r *ChunkMesh) UpdateLoop() {
-	defer func() {
-		mainthread.CallNonBlock(func() {
-			r.mesh.Release()
-		})
-	}()
-	for {
-		_, ok := <-r.sigch
-		if !ok {
-			return
-		}
-		r.updateMesh()
-	}
-}
-func (r *ChunkMesh) checkChunk() {
-	// nonblock signal
-	log.Printf("check chunk %v", r.id)
-	select {
-	case r.sigch <- true:
-	default:
-	}
-}
-
-func (r *ChunkMesh) updateMesh() {
-	c := game.world.Chunk(r.id)
-	if r.version == c.V() {
-		return
-	}
-	newMesh := r.br.makeChunkMesh(c, false)
-	oldMesh := r.mesh
-	r.mesh = newMesh
-	r.version = c.V()
-	mainthread.CallNonBlock(func() {
-		oldMesh.Release()
-	})
-}
-
 type BlockRender struct {
+	world   *world.World
+	win     *glfw.Window
 	shader  *glhf.Shader
 	texture *glhf.Texture
 
@@ -132,7 +74,7 @@ type BlockRender struct {
 	item *Mesh
 }
 
-func NewBlockRender() (*BlockRender, error) {
+func NewBlockRender(win *glfw.Window, world *world.World) (*BlockRender, error) {
 	var (
 		err error
 	)
@@ -142,6 +84,8 @@ func NewBlockRender() (*BlockRender, error) {
 	}
 
 	r := &BlockRender{
+		world: world,
+		win:   win,
 		sigch: make(chan bool, 4),
 	}
 
@@ -156,7 +100,7 @@ func NewBlockRender() (*BlockRender, error) {
 			glhf.Attr{Name: "fogdis", Type: glhf.Float},
 		}, blockVertexSource, blockFragmentSource)
 		r.text = &Text{shader: r.shader}
-		r.text.UpdateTexture()
+		//r.text.UpdateTexture()
 		if err != nil {
 			return
 		}
@@ -175,27 +119,28 @@ func NewBlockRender() (*BlockRender, error) {
 
 	return r, nil
 }
-func showFaces(id Vec3) [6]bool {
+
+func ShowFaces(world *world.World, id Vec3) [6]bool {
 	return [...]bool{
-		game.world.Block(id.Left()).IsTransparent(),
-		game.world.Block(id.Right()).IsTransparent(),
-		game.world.Block(id.Up()).IsTransparent(),
-		game.world.Block(id.Down()).IsTransparent() && game.world.Block(id.Down()) != nil, //&& id.Y != 0
-		game.world.Block(id.Front()).IsTransparent(),
-		game.world.Block(id.Back()).IsTransparent(),
+		world.Block(id.Left()).IsTransparent(),
+		world.Block(id.Right()).IsTransparent(),
+		world.Block(id.Up()).IsTransparent(),
+		world.Block(id.Down()).IsTransparent() && world.Block(id.Down()) != nil, //&& id.Y != 0
+		world.Block(id.Front()).IsTransparent(),
+		world.Block(id.Back()).IsTransparent(),
 	}
 }
-func makeBlock(vertices []float32, w *Block, id Vec3) []float32 {
+func makeBlock(world *world.World, vertices []float32, w *Block, id Vec3) []float32 {
 	//pos := game.camera.Pos()
 	/*show = [...]bool{
 		true, true, true, true, true, true,
 	}*/
-	show := showFaces(id)
+	show := ShowFaces(world, id)
 	vertices = makeData(w, vertices, show, id)
 	return vertices
 }
 
-func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
+func (r *BlockRender) makeChunkMesh(c *world.Chunk, onmainthread bool) *Mesh {
 	start := time.Now()
 	defer func() {
 		log.Printf("make chunk spend %fs %v", float64(time.Since(start))/float64(time.Second), c.Id())
@@ -204,7 +149,7 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 	defer r.facePool.Put(facedata[:0])
 
 	c.RangeBlocks(func(id Vec3, w *Block) {
-		facedata = makeBlock(facedata, w, id)
+		facedata = makeBlock(r.world, facedata, w, id)
 	})
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
 	log.Printf("chunk faces: %v %d %fs %d", c.Id(), n/6, float64(time.Since(start))/float64(time.Second), len(facedata))
@@ -215,13 +160,13 @@ func (r *BlockRender) makeChunkMesh(c *Chunk, onmainthread bool) *Mesh {
 }
 
 // call on mainthread
-func (r *BlockRender) UpdateItem(bt *BlockType) {
+func (r *BlockRender) UpdateItem(bt *world.BlockType) {
 	vertices := r.facePool.Get().([]float32)
 	defer r.facePool.Put(vertices[:0])
 
 	show := [...]bool{true, true, true, true, true, true}
 	pos := Vec3{0, 0, 0}
-	w := NewBlock(bt.Type)
+	w := world.NewBlock(bt.Type)
 
 	vertices = makeData(w, vertices, show, pos)
 
@@ -245,8 +190,8 @@ func frustumPlanes(mat *mgl32.Mat4) []mgl32.Vec4 {
 }
 
 func isChunkVisiable(planes []mgl32.Vec4, id Vec3) bool {
-	p := mgl32.Vec3{float32(id.X * ChunkWidth), 0, float32(id.Z * ChunkWidth)}
-	const m = ChunkWidth
+	p := mgl32.Vec3{float32(id.X * world.ChunkWidth), 0, float32(id.Z * world.ChunkWidth)}
+	const m = world.ChunkWidth
 	const max = 1024000
 
 	points := []mgl32.Vec3{
@@ -280,25 +225,25 @@ func isChunkVisiable(planes []mgl32.Vec4, id Vec3) bool {
 }
 
 // camera
-func (r *BlockRender) get3dmat() mgl32.Mat4 {
-	n := float32(*renderRadius * ChunkWidth)
-	width, height := game.win.GetSize()
+func (r *BlockRender) get3dmat(player *world.Player) mgl32.Mat4 {
+	n := float32(*RenderRadius * world.ChunkWidth)
+	width, height := r.win.GetSize()
 	mat := mgl32.Perspective(radian(45), float32(width)/float32(height), 0.01, n)
-	mat = mat.Mul4(game.player.Matrix())
+	mat = mat.Mul4(player.Matrix())
 	return mat
 }
 
-func (r *BlockRender) get2dmat() mgl32.Mat4 {
-	n := float32(*renderRadius * ChunkWidth)
+func (r *BlockRender) get2dmat(player *world.Player) mgl32.Mat4 {
+	n := float32(*RenderRadius * world.ChunkWidth)
 	mat := mgl32.Ortho(-n, n, -n, n, -1, n)
-	mat = mat.Mul4(game.player.Matrix())
+	mat = mat.Mul4(player.Matrix())
 	return mat
 }
 
-func (r *BlockRender) sortChunks(chunks []Vec3) []Vec3 {
-	cid := NearBlock(game.player.Pos()).Chunkid()
+func (r *BlockRender) sortChunks(player *world.Player, chunks []Vec3) []Vec3 {
+	cid := world.NearBlock(player.Pos()).Chunkid()
 	x, z := cid.X, cid.Z
-	mat := r.get3dmat()
+	mat := r.get3dmat(player)
 	planes := frustumPlanes(&mat)
 
 	sort.Slice(chunks, func(i, j int) bool {
@@ -317,12 +262,13 @@ func (r *BlockRender) sortChunks(chunks []Vec3) []Vec3 {
 	return chunks
 }
 
-func (r *BlockRender) updateMeshCache() {
-	block := NearBlock(game.player.Pos())
+func (r *BlockRender) updateMeshCache(player *world.Player) {
+	block := world.NearBlock(player.Pos())
 	chunk := block.Chunkid()
 	x, z := chunk.X, chunk.Z
-	n := *renderRadius
+	n := *RenderRadius
 	needed := make(map[Vec3]bool)
+	//log.Printf("updateMeshCache %v %d", block, n)
 
 	for dx := -n; dx < n; dx++ {
 		for dz := -n; dz < n; dz++ {
@@ -352,7 +298,7 @@ func (r *BlockRender) updateMeshCache() {
 	}
 	// 单次并发构造的chunk个数
 	const batchBuildChunk = 16
-	r.sortChunks(added)
+	r.sortChunks(player, added)
 	if len(added) > batchBuildChunk {
 		added = added[:batchBuildChunk]
 	}
@@ -368,12 +314,12 @@ func (r *BlockRender) updateMeshCache() {
 	//newChunks := game.world.Chunks(added)
 	group := sync.WaitGroup{}
 	for _, id := range added {
-		game.world.Chunk(id)
+		r.world.Chunk(id)
 		group.Add(1)
 		go func(id Vec3) {
 			defer group.Done()
 			log.Printf("add cache %v", id)
-			r.meshcache.Store(id, NewChunkMesh(r, id))
+			r.meshcache.Store(id, NewChunkMesh(r.world, r, id))
 		}(id)
 	}
 	group.Wait()
@@ -383,15 +329,14 @@ func (r *BlockRender) updateMeshCache() {
 
 }
 
-func (r *BlockRender) forcePlayerChunks() {
-	bid := NearBlock(game.player.Pos())
+func (r *BlockRender) forcePlayerChunks(player *world.Player) {
+	bid := world.NearBlock(player.Pos())
 	cid := bid.Chunkid()
 	//var ids []Vec3
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {
 			id := Vec3{cid.X + dx, 0, cid.Z + dz}
-			game.world.Chunk(id)
-
+			r.world.Chunk(id)
 		}
 	}
 }
@@ -424,27 +369,59 @@ func (r *BlockRender) DirtyChunk(id Vec3) {
 	mesh.(*ChunkMesh).DirtyChunk()
 }
 
-func (r *BlockRender) UpdateLoop() {
+func (r *BlockRender) UpdateLoop(player *world.Player) {
 	for {
 		select {
 		case <-r.sigch:
 		}
-		r.updateMeshCache()
+		r.updateMeshCache(player)
 	}
 }
 
-func (r *BlockRender) drawChunks() {
-	r.forcePlayerChunks()
+func (r *BlockRender) drawChunks(player *world.Player) {
+	r.forcePlayerChunks(player)
 	r.checkChunks()
-	mat := r.get3dmat()
+	mat := r.get3dmat(player)
 
 	r.shader.SetUniformAttr(0, mat)
-	r.shader.SetUniformAttr(1, game.player.Pos())
-	r.shader.SetUniformAttr(2, float32(*renderRadius)*ChunkWidth)
+	r.shader.SetUniformAttr(1, player.Pos())
+	r.shader.SetUniformAttr(2, float32(*RenderRadius)*world.ChunkWidth)
 
-	planes := frustumPlanes(&mat)
 	r.stat = Stat{}
-	r.meshcache.Range(func(k, v interface{}) bool {
+	planes := frustumPlanes(&mat)
+
+	block := world.NearBlock(player.Pos())
+	chunk := block.Chunkid()
+	x, z := chunk.X, chunk.Z
+	n := *RenderRadius
+	var info = fmt.Sprintf("pos (%v) chunk (%v)\n", block, chunk)
+	for dx := -n + 1; dx < n; dx++ {
+		for dz := -n + 1; dz < n; dz++ {
+			id := Vec3{x + dx, 0, z + dz}
+			if dx*dx+dz*dz > n*n {
+				continue
+			}
+			if v, ok := r.meshcache.Load(id); ok {
+				info += fmt.Sprintf("(%d,%d)", id.X, id.Z)
+				cmesh := v.(*ChunkMesh)
+				mesh := cmesh.mesh
+				r.stat.CacheChunks++
+				if isChunkVisiable(planes, id) {
+					info += fmt.Sprintf("e[%d]\t", mesh.Faces())
+					r.stat.RendingChunks++
+					r.stat.Faces += mesh.Faces()
+					mesh.Draw()
+				}
+			}
+		}
+		info += "\n"
+	}
+	log.Printf("%s", info)
+	r.stat.Info = info
+	r.text.UpdateTexture(info)
+	//log.Printf("\n%s\n", info)
+
+	/*r.meshcache.Range(func(k, v interface{}) bool {
 		id, cmesh := k.(Vec3), v.(*ChunkMesh)
 		mesh := cmesh.mesh
 		r.stat.CacheChunks++
@@ -454,14 +431,14 @@ func (r *BlockRender) drawChunks() {
 			mesh.Draw()
 		}
 		return true
-	})
+	})*/
 }
 
 func (r *BlockRender) drawItem() {
 	if r.item == nil {
 		return
 	}
-	width, height := game.win.GetSize()
+	width, height := r.win.GetSize()
 	ratio := float32(width) / float32(height)
 	projection := mgl32.Ortho2D(0, 15, 0, 15/ratio)
 	model := mgl32.Translate3D(1, 1, 0)
@@ -470,7 +447,7 @@ func (r *BlockRender) drawItem() {
 	mat := projection.Mul4(model)
 	r.shader.SetUniformAttr(0, mat)
 	r.shader.SetUniformAttr(1, mgl32.Vec3{0, 0, 0})
-	r.shader.SetUniformAttr(2, float32(*renderRadius)*ChunkWidth)
+	r.shader.SetUniformAttr(2, float32(*RenderRadius)*world.ChunkWidth)
 	r.item.Draw()
 }
 
@@ -511,9 +488,9 @@ func (t *Text) LoadPages() {
 	}
 }
 
-func (t *Text) UpdateTexture() {
+func (t *Text) UpdateTexture(s string) {
 	// 80 one line  256/16 one text
-	rect := image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{16 * 60, 60 * 16}}
+	rect := image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{16 * 80, 80 * 16}}
 	if t.rgba == nil {
 		t.LoadPages()
 		t.rgba = image.NewRGBA(rect)
@@ -527,21 +504,28 @@ func (t *Text) UpdateTexture() {
 			}
 		}
 	}
-	s := "你好啊 hello world"
-	for i, w, j := 0, 0, 0; i < len(s); i += w {
-		runeValue, width := utf8.DecodeRuneInString(s[i:])
+	//s := "你好啊 hello world\n hello"
+	var runeValue rune
+	for i, width, line, j := 0, 0, 0, 0; i < len(s); i += width {
+		runeValue, width = utf8.DecodeRuneInString(s[i:])
+		if runeValue == '\n' {
+			line += 1
+			j = 0
+			continue
+		}
 		tidx := int(runeValue % 256)
 		pidx := int(runeValue / 256)
 		page := t.pages[pidx]
-		log.Printf("update textrue %d", j)
 		if runeValue != rune(' ') {
-			page.Draw(t.rgba, image.Point{j * 16, 10}, tidx)
+			page.Draw(t.rgba, image.Point{j * 16, 10 + 16*line}, tidx)
 		}
-		w = width
 		j += 1
 	}
-
-	t.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, t.rgba.Pix)
+	if t.texture != nil {
+		t.texture.SetPixels(0, 0, rect.Dx(), rect.Dy(), t.rgba.Pix)
+	} else {
+		t.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, t.rgba.Pix)
+	}
 }
 
 func (t *Text) Draw() {
@@ -579,7 +563,7 @@ func (t *Text) Draw() {
 	mat := projection.Mul4(model)
 	t.shader.SetUniformAttr(0, mat)
 	t.shader.SetUniformAttr(1, mgl32.Vec3{0, 0, 0})
-	t.shader.SetUniformAttr(2, float32(*renderRadius)*ChunkWidth)
+	t.shader.SetUniformAttr(2, float32(*RenderRadius)*world.ChunkWidth)
 	//r.item.Draw()
 	t.face.Draw()
 }
@@ -588,11 +572,11 @@ func (r *BlockRender) drawText() {
 	r.text.Draw()
 }
 
-func (r *BlockRender) Draw() {
+func (r *BlockRender) Draw(player *world.Player) {
 	r.shader.Begin()
 	r.texture.Begin()
 
-	r.drawChunks()
+	r.drawChunks(player)
 	r.drawItem()
 
 	r.shader.End()
@@ -607,6 +591,7 @@ type Stat struct {
 	Faces         int
 	CacheChunks   int
 	RendingChunks int
+	Info          string
 }
 
 func (r *BlockRender) Stat() Stat {
@@ -678,14 +663,16 @@ func (l *Lines) Release() {
 }
 
 type LineRender struct {
+	win       *glfw.Window
+	world     *world.World
 	shader    *glhf.Shader
 	cross     *Lines
 	wireFrame *Lines
 	lastBlock Vec3
 }
 
-func NewLineRender() (*LineRender, error) {
-	r := &LineRender{}
+func NewLineRender(win *glfw.Window, world *world.World) (*LineRender, error) {
+	r := &LineRender{win: win, world: world}
 	var err error
 	mainthread.Call(func() {
 		r.shader, err = glhf.NewShader(glhf.AttrFormat{
@@ -706,16 +693,19 @@ func NewLineRender() (*LineRender, error) {
 }
 
 func (r *LineRender) drawCross() {
-	width, height := game.win.GetFramebufferSize()
+	width, height := r.win.GetFramebufferSize()
 	project := mgl32.Ortho2D(0, float32(width), float32(height), 0)
 	model := mgl32.Translate3D(float32(width/2), float32(height/2), 0)
 	model = model.Mul4(mgl32.Scale3D(float32(height/30), float32(height/30), 0))
 	r.cross.Draw(project.Mul4(model))
 }
 
-func (r *LineRender) drawWireFrame(mat mgl32.Mat4) {
+func (r *LineRender) drawWireFrame(player *world.Player, mat mgl32.Mat4) {
+	if r.world == nil {
+		panic("world is nil")
+	}
 	var vertices []float32
-	block, _ := game.world.HitTest(game.player.Pos(), game.player.Front())
+	block, _ := r.world.HitTest(player.Pos(), player.Front())
 	if block == nil {
 		return
 	}
@@ -729,12 +719,12 @@ func (r *LineRender) drawWireFrame(mat mgl32.Mat4) {
 
 	id := *block
 	show := [...]bool{
-		game.world.Block(id.Left()).IsTransparent(),
-		game.world.Block(id.Right()).IsTransparent(),
-		game.world.Block(id.Up()).IsTransparent(),
-		game.world.Block(id.Down()).IsTransparent(),
-		game.world.Block(id.Front()).IsTransparent(),
-		game.world.Block(id.Back()).IsTransparent(),
+		true || r.world.Block(id.Left()).IsTransparent(),
+		true || r.world.Block(id.Right()).IsTransparent(),
+		true || r.world.Block(id.Up()).IsTransparent(),
+		true || r.world.Block(id.Down()).IsTransparent(),
+		true || r.world.Block(id.Front()).IsTransparent(),
+		true || r.world.Block(id.Back()).IsTransparent(),
 	}
 	vertices = makeWireFrameData(vertices, show)
 	if len(vertices) == 0 {
@@ -749,15 +739,15 @@ func (r *LineRender) drawWireFrame(mat mgl32.Mat4) {
 	r.wireFrame.Draw(mat)
 }
 
-func (r *LineRender) Draw() {
-	width, height := game.win.GetSize()
-	projection := mgl32.Perspective(radian(45), float32(width)/float32(height), 0.01, ChunkWidth*float32(*renderRadius))
-	camera := game.player.Matrix()
+func (r *LineRender) Draw(player *world.Player) {
+	width, height := r.win.GetSize()
+	projection := mgl32.Perspective(radian(45), float32(width)/float32(height), 0.01, world.ChunkWidth*float32(*RenderRadius))
+	camera := player.Matrix()
 	mat := projection.Mul4(camera)
 
 	r.shader.Begin()
 	r.drawCross()
-	r.drawWireFrame(mat)
+	r.drawWireFrame(player, mat)
 	r.shader.End()
 }
 

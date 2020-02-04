@@ -1,4 +1,4 @@
-package main
+package world
 
 import (
 	"bytes"
@@ -39,6 +39,10 @@ func InitBoltStore() error {
 	var err error
 	store, err = NewBoltStore(path)
 	return err
+}
+
+func CloseStore() {
+	store.Close()
 }
 
 type Store interface {
@@ -106,7 +110,7 @@ func (s *BoltStore) UpdatePlayer(p *Player) error {
 }
 
 func (s *BoltStore) GetPlayer() (player *Player) {
-	player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
+	player = NewPlayer(mgl32.Vec3{0, 16, 0}, nil, nil)
 	//var state Position
 	//state.Vec3[1] = 16
 	s.db.View(func(tx *bolt.Tx) error {
