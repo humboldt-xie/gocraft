@@ -47,9 +47,14 @@ type Player struct {
 	pre     Position
 	flying  bool
 	ai      AI
-	physics Physics
+	Physics Physics
 }
 
+func (c *Player) Update(dt float64) {
+	if c.Physics != nil {
+		c.Physics.Update(c, dt)
+	}
+}
 func (c *Player) Head() Vec3 {
 	return NearBlock(c.Pos())
 }
@@ -60,13 +65,6 @@ func (c *Player) Foot() Vec3 {
 func (c *Player) State() Position {
 	return c.Position
 }
-
-/*func (c *Player) Jump(delta float32) {
-	block := game.CurrentBlockid()
-	if game.world.HasBlock(Vec3{block.X, block.Y - 2, block.Z}) {
-		c.physics.Speed(mgl32.Vec3{0, delta, 0})
-	}
-}*/
 
 func (c *Player) Move(dir Movement, delta float32) {
 	if c.flying {
@@ -116,7 +114,7 @@ func NewPlayer(pos mgl32.Vec3, ai AI, phy Physics) *Player {
 	p := &Player{
 		//front:  mgl32.Vec3{0, 0, -1},
 		ai:      ai,
-		physics: phy,
+		Physics: phy,
 		Sens:    0.14,
 		flying:  false,
 	}

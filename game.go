@@ -201,6 +201,12 @@ func (g *Game) onCursorPosCallback(win *glfw.Window, xpos float64, ypos float64)
 	g.lx, g.ly = xpos, ypos
 	g.player.ChangeAngle(float32(dx), float32(dy))
 }
+func (g *Game) Jump(delta float32) {
+	block := game.CurrentBlockid()
+	if game.world.HasBlock(world.Vec3{block.X, block.Y - 2, block.Z}) {
+		g.player.Physics.Speed(mgl32.Vec3{0, delta, 0})
+	}
+}
 
 func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 	if action != glfw.Press {
@@ -210,7 +216,7 @@ func (g *Game) onKeyCallback(win *glfw.Window, key glfw.Key, scancode int, actio
 	case glfw.KeyTab:
 		g.player.FlipFlying()
 	case glfw.KeySpace:
-		//g.player.Jump(8)
+		g.Jump(8)
 	case glfw.KeyN:
 		/*for i := 0; i < 1; i++ {
 			pos := g.player.Pos()
@@ -300,19 +306,16 @@ func (g *Game) syncPlayerLoop() {
 }
 
 func (g *Game) Update() {
+	var dt float64
+	now := glfw.GetTime()
+	dt = now - g.prevtime
+	g.prevtime = now
+	if dt > 0.02 {
+		dt = 0.02
+	}
+	g.player.Update(dt)
+	g.handleKeyInput(dt)
 	mainthread.Call(func() {
-		var dt float64
-		now := glfw.GetTime()
-		dt = now - g.prevtime
-		g.prevtime = now
-		if dt > 0.02 {
-			dt = 0.02
-		}
-
-		g.handleKeyInput(dt)
-
-		//g.playerRender.Update(dt)
-
 		gl.ClearColor(0.57, 0.71, 0.77, 1)
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 

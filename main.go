@@ -113,10 +113,20 @@ func run() {
 		game.playerRender.Add(client.ClientID, game.player)
 	}*/
 
-	tick := time.Tick(time.Second / 60)
+	//tick := time.Tick(time.Second / 60)
+	md := time.Second / 120
+	d := md
+	timer := time.NewTimer(d)
 	for !game.ShouldClose() {
-		<-tick
+		<-timer.C
+		start := time.Now()
 		game.Update()
+		d = md - time.Since(start)
+		if d < 0 {
+			d = 1
+		}
+		timer.Reset(d)
+		log.Printf("update spend %fs %fs", float64(time.Since(start))/float64(time.Second), float64(d+time.Since(start))/float64(time.Second))
 	}
 	//store.UpdatePlayer(game.player)
 }
