@@ -292,8 +292,8 @@ func (g *Game) renderStat() {
 		show = render.ShowFaces(g.world, *blockPos)
 	}
 	stat := g.blockRender.Stat()
-	title := fmt.Sprintf("[%.2f %.2f %.2f] %v(v:%d) [%d/%d %d] %d %d/100 %v", p.X(), p.Y(), p.Z(),
-		cid, c.V(), stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps(), life, show)
+	title := fmt.Sprintf("[%.2f %.2f %.2f] %v(v:%d) [%d/%d %d] %d %d/100 %v %v", p.X(), p.Y(), p.Z(),
+		cid, c.V(), stat.RendingChunks, stat.CacheChunks, stat.Faces, g.fps.Fps(), life, show, g.player.Position.Rx)
 
 	g.win.SetTitle(title)
 }

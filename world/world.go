@@ -14,11 +14,14 @@ type World struct {
 }
 
 func NewWorld(renderRadius int) *World {
-	m := (renderRadius) * (renderRadius) * 4
-	chunks, _ := lru.New(m)
-	return &World{
-		chunks: chunks,
-	}
+	m := (renderRadius * 2) * (renderRadius * 2) * 4
+	world := &World{}
+	world.chunks, _ = lru.NewWithEvict(m, world.EvictedChunk)
+	return world
+}
+
+func (w *World) EvictedChunk(key interface{}, value interface{}) {
+	log.Printf("onEvicted Chunk %v", key)
 }
 
 func (w *World) Collide(from, to mgl32.Vec3) (mgl32.Vec3, bool) {

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ChunkWidth = 32
+	ChunkWidth = 16
 )
 
 func (v Vec3) Chunkid() Vec3 {

@@ -1,11 +1,13 @@
 package render
 
 import (
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/humboldt-xie/tinycraft/world"
 )
 
 type Block = world.Block
 type Vec3 = world.Vec3
+type Point = mgl32.Vec3
 
 const (
 	sleft = iota
@@ -26,6 +28,13 @@ func makeCubeData(vertices []float32, w *Block, show [6]bool, block Vec3) []floa
 	cubeHeight := float32(0.5) //float32(0.5 * (float32(w.Life) - 50) / 50)
 	//cubeWeight := float32(0.5 * (float32(w.Life) / 100)) //1.0 / 2
 	cubeWeight := float32(0.5) //1.0 / 2
+	/*top := [4]Point{
+		{x - cubeWeight, y + 0.5, z - cubeWeight}, //left back
+		{0, 0, 0}, //left front
+		{0, 0, 0}, //right front
+		{0, 0, 0}, //right back
+	}
+	top[0].X()*/
 
 	if show[sleft] {
 		vertices = append(vertices, []float32{

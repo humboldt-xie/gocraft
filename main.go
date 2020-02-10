@@ -126,7 +126,7 @@ func run() {
 			d = 1
 		}
 		timer.Reset(d)
-		log.Printf("update spend %fs %fs", float64(time.Since(start))/float64(time.Second), float64(d+time.Since(start))/float64(time.Second))
+		//log.Printf("update spend %fs %fs", float64(time.Since(start))/float64(time.Second), float64(d+time.Since(start))/float64(time.Second))
 	}
 	//store.UpdatePlayer(game.player)
 }

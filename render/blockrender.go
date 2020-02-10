@@ -10,8 +10,32 @@ import (
 	"github.com/faiface/mainthread"
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/go-gl/mathgl/mgl32"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/humboldt-xie/tinycraft/world"
 )
+
+type MuCache struct {
+	mu  sync.Mutex
+	lru *lru.Cache
+}
+type Evicted func(key interface{}, value interface{})
+
+func NewMuCache(entry int, onEvicted Evicted) *MuCache {
+	glru, _ := lru.NewWithEvict(entry, onEvicted)
+	return &MuCache{lru: glru}
+}
+
+func (c *MuCache) Add(key interface{}, value interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lru.Add(key, value)
+}
+
+func (c *MuCache) Get(key interface{}) (interface{}, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lru.Get(key)
+}
 
 type BlockRender struct {
 	world   *world.World
@@ -21,8 +45,9 @@ type BlockRender struct {
 
 	facePool *sync.Pool
 
-	sigch     chan bool
-	meshcache sync.Map //map[Vec3]*ChunkMesh
+	sigch chan Vec3
+	//meshcache sync.Map //map[Vec3]*ChunkMesh
+	meshcache *MuCache
 
 	stat Stat
 	text *Text
@@ -42,8 +67,11 @@ func NewBlockRender(win *glfw.Window, world *world.World) (*BlockRender, error) 
 	r := &BlockRender{
 		world: world,
 		win:   win,
-		sigch: make(chan bool, 4),
+		sigch: make(chan Vec3, 8),
 	}
+
+	n := *RenderRadius * 2
+	r.meshcache = NewMuCache(n*n*4, r.OnEvicted)
 
 	mainthread.Call(func() {
 		r.shader, err = glhf.NewShader(glhf.AttrFormat{
@@ -87,10 +115,6 @@ func ShowFaces(world *world.World, id Vec3) [6]bool {
 	}
 }
 func makeBlock(world *world.World, vertices []float32, w *Block, id Vec3) []float32 {
-	//pos := game.camera.Pos()
-	/*show = [...]bool{
-		true, true, true, true, true, true,
-	}*/
 	show := ShowFaces(world, id)
 	vertices = makeData(w, vertices, show, id)
 	return vertices
@@ -171,71 +195,16 @@ func (r *BlockRender) sortChunks(player *world.Player, chunks []Vec3) []Vec3 {
 	return chunks
 }
 
-func (r *BlockRender) updateMeshCache(player *world.Player) {
-	block := world.NearBlock(player.Pos())
-	chunk := block.Chunkid()
-	x, z := chunk.X, chunk.Z
-	n := *RenderRadius
-	needed := make(map[Vec3]bool)
-	//log.Printf("updateMeshCache %v %d", block, n)
+func (r *BlockRender) OnEvicted(key interface{}, value interface{}) {
+	log.Printf("onEvicted %v", key)
+	value.(*ChunkMesh).Close()
+}
 
-	for dx := -n; dx < n; dx++ {
-		for dz := -n; dz < n; dz++ {
-			id := Vec3{x + dx, 0, z + dz}
-			if dx*dx+dz*dz > n*n {
-				continue
-			}
-			needed[id] = true
-		}
+func (r *BlockRender) updateMeshCache(player *world.Player, id Vec3) {
+	log.Printf("updateMeshCache %v", id)
+	if _, ok := r.meshcache.Get(id); !ok {
+		r.meshcache.Add(id, NewChunkMesh(r.world, r, id))
 	}
-
-	var added, removed []Vec3
-	r.meshcache.Range(func(k, v interface{}) bool {
-		id := k.(Vec3)
-		if !needed[id] {
-			removed = append(removed, id)
-		}
-		return true
-	})
-
-	for id := range needed {
-		_, ok := r.meshcache.Load(id)
-		// 不在cache里面的需要重新构建
-		if !ok {
-			added = append(added, id)
-		}
-	}
-	// 单次并发构造的chunk个数
-	const batchBuildChunk = 16
-	r.sortChunks(player, added)
-	if len(added) > batchBuildChunk {
-		added = added[:batchBuildChunk]
-	}
-
-	for _, id := range removed {
-		log.Printf("remove cache %v", id)
-		mesh, _ := r.meshcache.Load(id)
-		r.meshcache.Delete(id)
-		mesh.(*ChunkMesh).Close()
-	}
-
-	start := time.Now()
-	//newChunks := game.world.Chunks(added)
-	group := sync.WaitGroup{}
-	for _, id := range added {
-		r.world.Chunk(id)
-		group.Add(1)
-		go func(id Vec3) {
-			defer group.Done()
-			log.Printf("add cache %v", id)
-			r.meshcache.Store(id, NewChunkMesh(r.world, r, id))
-		}(id)
-	}
-	group.Wait()
-	if len(added) > 0 {
-		log.Printf("make chunks spend %fs %d", float64(time.Since(start))/float64(time.Second), len(added))
-	}
-
 }
 
 func (r *BlockRender) forcePlayerChunks(player *world.Player) {
@@ -250,10 +219,10 @@ func (r *BlockRender) forcePlayerChunks(player *world.Player) {
 	}
 }
 
-func (r *BlockRender) checkChunks() {
+func (r *BlockRender) checkChunk(id Vec3) {
 	// nonblock signal
 	select {
-	case r.sigch <- true:
+	case r.sigch <- id:
 	default:
 	}
 }
@@ -271,7 +240,7 @@ func (r *BlockRender) DirtyBlock(id Vec3) {
 }
 
 func (r *BlockRender) DirtyChunk(id Vec3) {
-	mesh, ok := r.meshcache.Load(id)
+	mesh, ok := r.meshcache.Get(id)
 	if !ok {
 		return
 	}
@@ -279,17 +248,22 @@ func (r *BlockRender) DirtyChunk(id Vec3) {
 }
 
 func (r *BlockRender) UpdateLoop(player *world.Player) {
+	onUpdate := sync.Map{}
 	for {
-		select {
-		case <-r.sigch:
+		id := <-r.sigch
+		if _, ok := onUpdate.Load(id); !ok {
+			onUpdate.Store(id, true)
+			go func(id Vec3) {
+				r.updateMeshCache(player, id)
+				defer onUpdate.Delete(id)
+			}(id)
 		}
-		r.updateMeshCache(player)
 	}
 }
 
 func (r *BlockRender) drawChunks(player *world.Player) {
 	r.forcePlayerChunks(player)
-	r.checkChunks()
+	//r.checkChunks()
 	mat := r.get3dmat(player)
 
 	r.shader.SetUniformAttr(0, mat)
@@ -303,31 +277,41 @@ func (r *BlockRender) drawChunks(player *world.Player) {
 	chunk := block.Chunkid()
 	x, z := chunk.X, chunk.Z
 	n := *RenderRadius
+	r.stat.CacheChunks = r.meshcache.lru.Len()
 	//var info = fmt.Sprintf("pos (%v) chunk (%v)\n", block, chunk)
+	needMakeMesh := []Vec3{}
 	for dx := -n + 1; dx < n; dx++ {
 		for dz := -n + 1; dz < n; dz++ {
 			id := Vec3{x + dx, 0, z + dz}
 			if dx*dx+dz*dz > n*n {
 				continue
 			}
-			if v, ok := r.meshcache.Load(id); ok {
+			if !isChunkVisiable(planes, id) {
+				continue
+			}
+			//info += fmt.Sprintf("(%d,%d)", id.X, id.Z)
+			if v, ok := r.meshcache.Get(id); ok {
 				chunk := r.world.Chunk(id)
-				//info += fmt.Sprintf("(%d,%d)", id.X, id.Z)
 				cmesh := v.(*ChunkMesh)
 				mesh := cmesh.mesh
 				if chunk.V() != cmesh.version {
 					cmesh.checkChunk()
 				}
-				r.stat.CacheChunks++
-				if isChunkVisiable(planes, id) {
-					//info += fmt.Sprintf("e[%d]\t", mesh.Faces())
-					r.stat.RendingChunks++
-					r.stat.Faces += mesh.Faces()
-					mesh.Draw()
-				}
+				//info += fmt.Sprintf("e[%d]\t", mesh.Faces())
+				r.stat.RendingChunks++
+				r.stat.Faces += mesh.Faces()
+				mesh.Draw()
+			} else {
+				//info += fmt.Sprintf("n\t")
+				needMakeMesh = append(needMakeMesh, id)
 			}
 		}
 		//info += "\n"
+	}
+	//log.Printf("%s %v", info,needAdd)
+	r.sortChunks(player, needMakeMesh)
+	for _, id := range needMakeMesh {
+		r.checkChunk(id)
 	}
 	//r.stat.Info = info
 	//r.text.UpdateTexture(info)
