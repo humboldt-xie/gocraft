@@ -4,18 +4,61 @@ import (
 	"log"
 	"sync"
 
+	"container/list"
 	"github.com/go-gl/mathgl/mgl32"
 	lru "github.com/hashicorp/golang-lru"
 )
 
+type Event struct {
+	Type string
+	Data interface{}
+}
+
+type Watcher struct {
+	sync.Mutex
+	watched *list.List
+}
+
+func NewWatcher() *Watcher {
+	return &Watcher{watched: list.New()}
+}
+
+func (w *Watcher) Emit(e interface{}) {
+	w.Lock()
+	defer w.Unlock()
+	it := w.watched.Front()
+	for it != nil {
+		ch := it.Value.(chan interface{})
+		remove := it
+		select {
+		case ch <- e:
+			remove = nil
+		default:
+		}
+		it = it.Next()
+		if remove != nil {
+			close(ch)
+			w.watched.Remove(remove)
+		}
+	}
+}
+
+func (w *Watcher) Watch(size int) chan interface{} {
+	ch := make(chan interface{}, size)
+	w.watched.PushBack(ch)
+	return ch
+}
+
 type World struct {
-	mutex  sync.Mutex
-	chunks *lru.Cache // map[Vec3]*Chunk
+	mutex   sync.Mutex
+	chunks  *lru.Cache // map[Vec3]*Chunk
+	Watcher *Watcher
 }
 
 func NewWorld(renderRadius int) *World {
 	m := (renderRadius * 2) * (renderRadius * 2) * 4
 	world := &World{}
+	world.Watcher = NewWatcher()
 	world.chunks, _ = lru.NewWithEvict(m, world.EvictedChunk)
 	return world
 }
@@ -80,15 +123,9 @@ func (w *World) HitTest(pos mgl32.Vec3, vec mgl32.Vec3) (*Vec3, *Vec3) {
 }
 
 func (w *World) IsTransparent(id Vec3) bool {
-	chunk := w.BlockChunk(id)
-	if chunk == nil {
-		return true
-	}
-	block := chunk.Block(id)
+	block := w.Block(id)
 	if block == nil {
-		if id.Y < chunk.minY {
-			return false
-		}
+		return true
 	}
 	return block.IsTransparent()
 }
@@ -159,6 +196,8 @@ func (w *World) updateBlock(id Vec3, tp *Block) {
 	if chunk != nil {
 		chunk.add(id, tp)
 	}
+	w.Watcher.Emit(Event{Type: "Block.Update", Data: tp})
+	//on change
 	store.UpdateBlock(id, tp)
 
 }
@@ -191,10 +230,10 @@ func (w *World) Chunk(id Vec3) *Chunk {
 		log.Printf("fetch chunk(%v) from db error:%s", id, err)
 		return nil
 	}
-	ClientFetchChunk(id, func(bid Vec3, w *Block) {
+	/*ClientFetchChunk(id, func(bid Vec3, w *Block) {
 		chunk.add(bid, w)
 		store.UpdateBlock(bid, w)
-	})
+	})*/
 	w.storeChunk(id, chunk)
 	return chunk
 }

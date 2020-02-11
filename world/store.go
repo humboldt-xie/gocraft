@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 
 	"github.com/boltdb/bolt"
@@ -30,9 +29,9 @@ func InitBoltStore() error {
 	if *dbpath != "" {
 		path = *dbpath
 	}
-	if *serverAddr != "" {
+	/*if *serverAddr != "" {
 		path = fmt.Sprintf("cache_%s.db", *serverAddr)
-	}
+	}*/
 	if path == "" {
 		return errors.New("empty db path")
 	}

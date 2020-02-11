@@ -39,6 +39,7 @@ func (c *MuCache) Get(key interface{}) (interface{}, bool) {
 
 type BlockRender struct {
 	world   *world.World
+	player  *world.Player
 	win     *glfw.Window
 	shader  *glhf.Shader
 	texture *glhf.Texture
@@ -55,7 +56,7 @@ type BlockRender struct {
 	item *Mesh
 }
 
-func NewBlockRender(win *glfw.Window, world *world.World) (*BlockRender, error) {
+func NewBlockRender(win *glfw.Window, world *world.World, player *world.Player) (*BlockRender, error) {
 	var (
 		err error
 	)
@@ -65,9 +66,10 @@ func NewBlockRender(win *glfw.Window, world *world.World) (*BlockRender, error) 
 	}
 
 	r := &BlockRender{
-		world: world,
-		win:   win,
-		sigch: make(chan Vec3, 8),
+		world:  world,
+		player: player,
+		win:    win,
+		sigch:  make(chan Vec3, 8),
 	}
 
 	n := *RenderRadius * 2
@@ -100,6 +102,7 @@ func NewBlockRender(win *glfw.Window, world *world.World) (*BlockRender, error) 
 			return make([]float32, 0, size)
 		},
 	}
+	go r.UpdateLoop(r.player)
 
 	return r, nil
 }

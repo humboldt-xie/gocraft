@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	_ "image/png"
@@ -104,7 +105,9 @@ func NewGame(w, h int) (*Game, error) {
 		game.win = win
 	})
 	game.world = world.NewWorld(*render.RenderRadius)
-	game.blockRender, err = render.NewBlockRender(game.win, game.world)
+	game.player = world.NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
+
+	game.blockRender, err = render.NewBlockRender(game.win, game.world, game.player)
 	if err != nil {
 		return nil, err
 	}
@@ -120,18 +123,30 @@ func NewGame(w, h int) (*Game, error) {
 		return nil, err
 	}
 
-	game.player = world.NewPlayer(mgl32.Vec3{0, 16, 0}, nil, &SimplePhysics{})
 	//game.playerRender.Add(0, game.player)
 	//if client == nil {
 	game.players.Store(int32(0), game.player)
 	/*} else {
 		game.players.Store(int32(client.ClientID), game.player)
-
 	}*/
+	go game.watchWorld()
 
-	go game.blockRender.UpdateLoop(game.player)
 	go game.syncPlayerLoop()
 	return game, nil
+}
+
+func (g *Game) watchWorld() {
+	for {
+		ch := g.world.Watcher.Watch(1024)
+		for {
+			ev, ok := <-ch
+			if !ok {
+				break
+			}
+			log.Printf("onEvent %v", ev)
+		}
+	}
+
 }
 
 func (g *Game) setExclusiveMouse(exclusive bool) {
