@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
-	"image/png"
-	"os"
 	"unicode/utf8"
 
 	"github.com/faiface/glhf"
@@ -22,36 +19,6 @@ var (
 	texturePath  = flag.String("t", "texture.png", "texture file")
 	RenderRadius = flag.Int("r", 6, "render radius")
 )
-
-func loadImage(fname string) (*image.RGBA, image.Rectangle, error) {
-	f, err := os.Open(fname)
-	if err != nil {
-		return nil, image.Rectangle{}, err
-	}
-	defer f.Close()
-	img, err := png.Decode(f)
-	if err != nil {
-		return nil, image.Rectangle{}, err
-	}
-
-	rgba := image.NewRGBA(img.Bounds())
-	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
-
-	bounds := rgba.Bounds()
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r := rgba.At(x, y).(color.RGBA)
-			if r.A == 0 {
-				r.R = 255
-				r.G = 0
-				r.B = 255
-			}
-			rgba.Set(x, y, r)
-		}
-	}
-
-	return rgba, img.Bounds(), nil
-}
 
 func frustumPlanes(mat *mgl32.Mat4) []mgl32.Vec4 {
 	c1, c2, c3, c4 := mat.Rows()
@@ -120,15 +87,24 @@ type Text struct {
 	texture *glhf.Texture
 	shader  *glhf.Shader
 	face    *Mesh
+	str     string
+	event   chan interface{}
 	texts   []string
-	rgba    *image.RGBA
 	pages   map[int]*UnicodePage
+}
+
+func NewText(s *glhf.Shader) *Text {
+	text := Text{shader: s, event: make(chan interface{})}
+	go text.Watch()
+	text.updateTexture(" ")
+	return &text
+
 }
 
 func (t *Text) LoadPages() {
 	t.pages = make(map[int]*UnicodePage)
 	for i := 0; i < 256; i++ {
-		img, rect, err := loadImage(fmt.Sprintf("font/unicode_page_%.2x.png", i))
+		img, rect, err := LoadImage(fmt.Sprintf("font/unicode_page_%.2x.png", i))
 		if err != nil {
 			//panic(err)
 			continue
@@ -136,22 +112,40 @@ func (t *Text) LoadPages() {
 		t.pages[i] = &UnicodePage{rgba: img, rect: rect}
 	}
 }
+func (t *Text) Update(s string) {
+	if t.str == s {
+		return
+	}
+	t.str = s
+	t.str = s
+	select {
+	case t.event <- struct{}{}:
+	default:
+	}
+}
+func (t *Text) Watch() {
+	for range t.event {
+		mainthread.Call(func() {
+			t.updateTexture(t.str)
+		})
+	}
+}
 
-func (t *Text) UpdateTexture(s string) {
+func (t *Text) updateTexture(s string) {
 	// 80 one line  256/16 one text
 	rect := image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{16 * 80, 80 * 16}}
-	if t.rgba == nil {
-		t.LoadPages()
-		t.rgba = image.NewRGBA(rect)
-		for y := rect.Min.Y; y < rect.Max.Y; y++ {
-			for x := rect.Min.X; x < rect.Max.X; x++ {
-				r := t.rgba.At(x, y).(color.RGBA)
-				r.R = 255
-				r.G = 0
-				r.B = 255
-				t.rgba.Set(x, y, r)
-			}
+	rgba := image.NewRGBA(rect)
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			r := rgba.At(x, y).(color.RGBA)
+			r.R = 255
+			r.G = 0
+			r.B = 255
+			rgba.Set(x, y, r)
 		}
+	}
+	if t.pages == nil {
+		t.LoadPages()
 	}
 	//s := "你好啊 hello world\n hello"
 	var runeValue rune
@@ -166,15 +160,15 @@ func (t *Text) UpdateTexture(s string) {
 		pidx := int(runeValue / 256)
 		page := t.pages[pidx]
 		if runeValue != rune(' ') {
-			page.Draw(t.rgba, image.Point{j * 16, 10 + 16*line}, tidx)
+			page.Draw(rgba, image.Point{j * 16, 10 + 16*line}, tidx)
 		}
 		j += 1
 	}
-	if t.texture != nil {
+	/*if t.texture != nil {
 		t.texture.SetPixels(0, 0, rect.Dx(), rect.Dy(), t.rgba.Pix)
-	} else {
-		t.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, t.rgba.Pix)
-	}
+	} else {*/
+	t.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, rgba.Pix)
+	//}
 }
 
 func (t *Text) Draw() {
@@ -218,6 +212,7 @@ func (t *Text) Draw() {
 }
 
 func (r *BlockRender) drawText() {
+	//log.Printf("draw text %s", r.text.str)
 	r.text.Draw()
 }
 
@@ -367,7 +362,7 @@ func (r *LineRender) drawWireFrame(player *world.Player, mat mgl32.Mat4) {
 	}
 
 	id := *block
-	show := [...]bool{
+	show := FaceFilter{
 		true || r.world.Block(id.Left()).IsTransparent(),
 		true || r.world.Block(id.Right()).IsTransparent(),
 		true || r.world.Block(id.Up()).IsTransparent(),

@@ -21,6 +21,7 @@ type AI interface {
 }
 
 type Physics interface {
+	GetSpeed() mgl32.Vec3
 	Speed(a mgl32.Vec3)
 	Update(p *Player, dt float64)
 }
@@ -53,6 +54,9 @@ type Player struct {
 func (c *Player) Update(dt float64) {
 	if c.Physics != nil {
 		c.Physics.Update(c, dt)
+	}
+	if c.ai != nil {
+		c.ai.Think(c)
 	}
 }
 func (c *Player) Head() Vec3 {

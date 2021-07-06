@@ -1,13 +1,30 @@
 package world
 
 const (
-	_ DrawType = iota
+	_ ModelType = iota
 	DTAir
 	DTBlock
 	DTPlant
 	DTMan
 )
 
+func GetDrawType(s string) ModelType {
+	names := map[string]ModelType{
+		"air":   DTAir,
+		"block": DTBlock,
+		"plant": DTPlant,
+		"DTMan": DTMan,
+	}
+	if dt, ok := names[s]; ok {
+		return dt
+	}
+	return 0
+
+}
+
+// 左x-1 右X+1
+// 上y+1 下 y-1
+// 前z+1  后 z-1
 type Vec3 struct {
 	X, Y, Z int
 }
@@ -48,13 +65,13 @@ var (
 	TypeAir        = 0
 )
 
-type DrawType int
+type ModelType int
 
 type BlockType struct {
 	Type          int
-	DrawType      DrawType
-	IsTransparent bool
-	IsObstacle    bool
+	Model         ModelType
+	IsTransparent bool //是否透明
+	IsObstacle    bool //是否可穿越
 }
 
 func (t *BlockType) Data(w *Block, vertices []float32, show [6]bool, block Vec3) []float32 {
@@ -63,6 +80,7 @@ func (t *BlockType) Data(w *Block, vertices []float32, show [6]bool, block Vec3)
 }
 
 type Block struct {
+	ID   Vec3
 	Type int
 	Life int
 }

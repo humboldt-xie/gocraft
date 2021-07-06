@@ -1,0 +1,23 @@
+items:
+- id: 1
+  name: dirt
+  is_obstacle: true
+  type: block
+  texture:
+    default: "default_dirt.png"
+- id: 2
+  name: sand
+  is_obstacle: true
+  type: block
+  texture:
+    default: "sand.png"
+- id: 64
+  name: head
+  is_obstacle: true
+  type: block
+  texture:
+    default: "head.png"
+- id: 17
+  type: plant
+  texture:
+    default: "sword.png"

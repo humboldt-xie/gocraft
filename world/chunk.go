@@ -18,6 +18,7 @@ func (v Vec3) Chunkid() Vec3 {
 		0,
 		int(math.Floor(float64(v.Z) / ChunkWidth)),
 	}
+
 }
 
 func NearBlock(pos mgl32.Vec3) Vec3 {
@@ -26,6 +27,11 @@ func NearBlock(pos mgl32.Vec3) Vec3 {
 		int(round(pos.Y())),
 		int(round(pos.Z())),
 	}
+}
+
+type ChunkLine struct {
+	id     Vec3 // x y(*) z
+	blocks sync.Map
 }
 
 type Chunk struct {
@@ -58,6 +64,7 @@ func (c *Chunk) Block(id Vec3) *Block {
 	if id.Chunkid() != c.id {
 		log.Panicf("id %v chunk %v", id, c.id)
 	}
+
 	w, ok := c.blocks.Load(id)
 	if ok {
 		return w.(*Block)
@@ -80,6 +87,7 @@ func (c *Chunk) add(id Vec3, w *Block) {
 		c.minY = id.Y
 	}
 	c.version += 1
+	w.ID = id
 	c.blocks.Store(id, w)
 }
 

@@ -1,8 +1,9 @@
 package render
 
 import (
-	"github.com/go-gl/mathgl/mgl32"
 	"log"
+
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 var (
@@ -50,15 +51,17 @@ func NewItemHub() *ItemHub {
 	}
 }
 
-func (h *ItemHub) AddTexture(w int, l, r, u, d, f, b int) {
+// l, r, u, d, f, b int
+func (h *ItemHub) AddTexture(w int, desc TextDesc) {
 	h.tex[w] = &BlockTexture{
-		Left:  MakeFaceTexture(l),
-		Right: MakeFaceTexture(r),
-		Up:    MakeFaceTexture(u),
-		Down:  MakeFaceTexture(d),
-		Front: MakeFaceTexture(f),
-		Back:  MakeFaceTexture(b),
+		Left:  MakeFaceTexture(desc.Left),
+		Right: MakeFaceTexture(desc.Right),
+		Up:    MakeFaceTexture(desc.Top),
+		Down:  MakeFaceTexture(desc.Bottom),
+		Front: MakeFaceTexture(desc.Front),
+		Back:  MakeFaceTexture(desc.Back),
 	}
+	log.Printf("add texture %d %v", w, desc)
 }
 
 func (h *ItemHub) Texture(w *Block) *BlockTexture {
@@ -69,10 +72,14 @@ func (h *ItemHub) Texture(w *Block) *BlockTexture {
 	}
 	return t
 }
+func AddTextureDesc(id int, desc TextDesc) error {
+	tex.AddTexture(id, desc)
+	return nil
+}
 
 func LoadTextureDesc() error {
 	for w, f := range itemDesc {
-		tex.AddTexture(w, f[0], f[1], f[2], f[3], f[4], f[5])
+		tex.AddTexture(w, f)
 	}
 	return nil
 }
@@ -81,8 +88,17 @@ type ItemDesc struct {
 	Texture []int
 }
 
+type TextDesc struct {
+	Left   int
+	Right  int
+	Top    int
+	Bottom int
+	Front  int
+	Back   int
+}
+
 // w => left, right, top, bottom, front, back
-var itemDesc = map[int][6]int{
+var itemDesc = map[int]TextDesc{
 	0:  {0, 0, 0, 0, 0, 0},
 	1:  {16, 16, 32, 0, 16, 16},
 	2:  {1, 1, 1, 1, 1, 1},
@@ -107,7 +123,7 @@ var itemDesc = map[int][6]int{
 	21: {52, 52, 0, 0, 52, 52},
 	22: {53, 53, 0, 0, 53, 53},
 	23: {54, 54, 0, 0, 54, 54},
-	24: {0, 0, 0, 0, 0, 0},
+	24: {17, 17, 17, 17, 17, 17},
 	25: {0, 0, 0, 0, 0, 0},
 	26: {0, 0, 0, 0, 0, 0},
 	27: {0, 0, 0, 0, 0, 0},

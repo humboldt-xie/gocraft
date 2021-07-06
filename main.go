@@ -101,7 +101,7 @@ func run() {
 		}
 	}*/
 
-	game, err = NewGame(800, 600)
+	game, err = NewGame(2024, 1400)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -117,6 +117,7 @@ func run() {
 	md := time.Second / 120
 	d := md
 	timer := time.NewTimer(d)
+	go game.UpdateObject()
 	for !game.ShouldClose() {
 		<-timer.C
 		start := time.Now()

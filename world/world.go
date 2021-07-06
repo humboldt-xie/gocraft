@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"container/list"
+
 	"github.com/go-gl/mathgl/mgl32"
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -77,6 +78,9 @@ func (w *World) Collide(from, to mgl32.Vec3) (mgl32.Vec3, bool) {
 
 	stop := false
 	for _, b := range []Vec3{foot, head} {
+		if w.Block(b).IsObstacle() {
+			y = y + pad
+		}
 		if w.Block(b.Left()).IsObstacle() && x < nx && nx-x > pad {
 			x = nx - pad
 		}
@@ -210,7 +214,7 @@ func (w *World) UpdateBlock(id Vec3, tp *Block) {
 
 func (w *World) HasBlock(id Vec3) bool {
 	tp := w.Block(id)
-	return tp != nil && tp.BlockType().DrawType != DTAir
+	return tp != nil && tp.BlockType().Model != DTAir
 }
 
 func (w *World) Chunk(id Vec3) *Chunk {

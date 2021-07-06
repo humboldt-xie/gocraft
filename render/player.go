@@ -21,7 +21,7 @@ func NewPlayerRender() (*PlayerRender, error) {
 	var (
 		err error
 	)
-	img, rect, err := loadImage(*texturePath)
+	img, rect, err := LoadImage(*texturePath)
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +43,9 @@ func NewPlayerRender() (*PlayerRender, error) {
 		}
 		r.texture = glhf.NewTexture(rect.Dx(), rect.Dy(), false, img.Pix)
 
-		cubeData := makeCubeData([]float32{}, world.NewBlock(64), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
+		cubeData := makeCubeData([]float32{}, world.NewBlock(64), FaceFilter{true, true, true, true, true, true}, Vec3{0, 0, 0})
 		r.mesh = NewMesh(r.shader, cubeData, true)
-		cubeDataFoot := makeCubeData([]float32{}, world.NewBlock(65), [...]bool{true, true, true, true, true, true}, Vec3{0, 0, 0})
+		cubeDataFoot := makeCubeData([]float32{}, world.NewBlock(65), FaceFilter{true, true, true, true, true, true}, Vec3{0, 0, 0})
 		r.meshFoot = NewMesh(r.shader, cubeDataFoot, true)
 
 	})

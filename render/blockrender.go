@@ -57,13 +57,13 @@ type BlockRender struct {
 }
 
 func NewBlockRender(win *glfw.Window, world *world.World, player *world.Player) (*BlockRender, error) {
-	var (
-		err error
-	)
-	img, rect, err := loadImage(*texturePath)
+	var err error
+	img, rect, err := LoadImage(*texturePath)
 	if err != nil {
 		return nil, err
 	}
+
+	//img = dst
 
 	r := &BlockRender{
 		world:  world,
@@ -85,8 +85,8 @@ func NewBlockRender(win *glfw.Window, world *world.World, player *world.Player) 
 			glhf.Attr{Name: "camera", Type: glhf.Vec3},
 			glhf.Attr{Name: "fogdis", Type: glhf.Float},
 		}, blockVertexSource, blockFragmentSource)
-		r.text = &Text{shader: r.shader}
-		r.text.UpdateTexture("")
+		r.text = NewText(r.shader) //&Text{shader: r.shader}
+		r.text.Update("欢迎光临")
 		if err != nil {
 			return
 		}
@@ -107,14 +107,14 @@ func NewBlockRender(win *glfw.Window, world *world.World, player *world.Player) 
 	return r, nil
 }
 
-func ShowFaces(world *world.World, id Vec3) [6]bool {
-	return [...]bool{
-		world.Block(id.Left()).IsTransparent(),
-		world.Block(id.Right()).IsTransparent(),
-		world.Block(id.Up()).IsTransparent(),
-		world.Block(id.Down()).IsTransparent() && world.Block(id.Down()) != nil, //&& id.Y != 0
-		world.Block(id.Front()).IsTransparent(),
-		world.Block(id.Back()).IsTransparent(),
+func ShowFaces(world *world.World, id Vec3) FaceFilter {
+	return FaceFilter{
+		Left:  world.Block(id.Left()).IsTransparent(),
+		Right: world.Block(id.Right()).IsTransparent(),
+		Up:    world.Block(id.Up()).IsTransparent(),
+		Down:  world.Block(id.Down()).IsTransparent() && world.Block(id.Down()) != nil, //&& id.Y != 0
+		Front: world.Block(id.Front()).IsTransparent(),
+		Back:  world.Block(id.Back()).IsTransparent(),
 	}
 }
 func makeBlock(world *world.World, vertices []float32, w *Block, id Vec3) []float32 {
@@ -123,17 +123,54 @@ func makeBlock(world *world.World, vertices []float32, w *Block, id Vec3) []floa
 	return vertices
 }
 
+func (r *BlockRender) UpdateText(s string) {
+	r.text.Update(s)
+}
+
 func (r *BlockRender) makeChunkMesh(c *world.Chunk, onmainthread bool) *Mesh {
 	start := time.Now()
+	makeDataSpend := 0.0
 	defer func() {
-		log.Printf("make chunk spend %fs %v", float64(time.Since(start))/float64(time.Second), c.Id())
+		log.Printf("make chunk spend %.2fs make data spend: %.2fs %v", float64(time.Since(start))/float64(time.Second), makeDataSpend, c.Id())
 	}()
 	facedata := r.facePool.Get().([]float32)
 	defer r.facePool.Put(facedata[:0])
+	merge := make(chan []float32, 1024)
+	maker := make(chan *Block, 1024)
+	wg := sync.WaitGroup{}
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for faces := range merge {
+			facedata = append(facedata, faces...)
+		}
+	}()
+
+	wgMaker := sync.WaitGroup{}
+	for i := 0; i < 4; i++ {
+		wgMaker.Add(1)
+		go func() {
+			defer wgMaker.Done()
+			for b := range maker {
+				temp := []float32{}
+				temp = makeBlock(r.world, temp, b, b.ID)
+				merge <- temp
+			}
+
+		}()
+	}
 	c.RangeBlocks(func(id Vec3, w *Block) {
-		facedata = makeBlock(r.world, facedata, w, id)
+		/*temp := []float32{}
+		temp = makeBlock(r.world, temp, w, id)
+		merge <- temp*/
+		maker <- w
 	})
+	close(maker)
+	wgMaker.Wait()
+	close(merge)
+	wg.Wait()
+	makeDataSpend = float64(time.Since(start)) / float64(time.Second)
 	n := len(facedata) / (r.shader.VertexFormat().Size() / 4)
 	log.Printf("chunk faces: %v %d %fs %d", c.Id(), n/6, float64(time.Since(start))/float64(time.Second), len(facedata))
 	var mesh *Mesh
@@ -147,7 +184,7 @@ func (r *BlockRender) UpdateItem(bt *world.BlockType) {
 	vertices := r.facePool.Get().([]float32)
 	defer r.facePool.Put(vertices[:0])
 
-	show := [...]bool{true, true, true, true, true, true}
+	show := FaceFilter{true, true, true, true, true, true}
 	pos := Vec3{0, 0, 0}
 	w := world.NewBlock(bt.Type)
 
@@ -161,7 +198,7 @@ func (r *BlockRender) UpdateItem(bt *world.BlockType) {
 }
 
 // camera
-func (r *BlockRender) get3dmat(player *world.Player) mgl32.Mat4 {
+func (r *BlockRender) Get3dmat(player *world.Player) mgl32.Mat4 {
 	n := float32(*RenderRadius * world.ChunkWidth)
 	width, height := r.win.GetSize()
 	mat := mgl32.Perspective(radian(45), float32(width)/float32(height), 0.01, n)
@@ -179,7 +216,7 @@ func (r *BlockRender) get2dmat(player *world.Player) mgl32.Mat4 {
 func (r *BlockRender) sortChunks(player *world.Player, chunks []Vec3) []Vec3 {
 	cid := world.NearBlock(player.Pos()).Chunkid()
 	x, z := cid.X, cid.Z
-	mat := r.get3dmat(player)
+	mat := r.Get3dmat(player)
 	planes := frustumPlanes(&mat)
 
 	sort.Slice(chunks, func(i, j int) bool {
@@ -267,7 +304,7 @@ func (r *BlockRender) UpdateLoop(player *world.Player) {
 func (r *BlockRender) drawChunks(player *world.Player) {
 	r.forcePlayerChunks(player)
 	//r.checkChunks()
-	mat := r.get3dmat(player)
+	mat := r.Get3dmat(player)
 
 	r.shader.SetUniformAttr(0, mat)
 	r.shader.SetUniformAttr(1, player.Pos())
